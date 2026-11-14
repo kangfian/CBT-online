@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
+var VER = 'v2.3', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -122,7 +122,17 @@ function suara(n) { // utamakan rekaman suara orang (audio/peringatan-N.mp3) bil
   var done = false, fb = function () { if (!done) { done = true; tts(n); } };
   try { var a = new Audio('audio/peringatan-' + n + '.mp3'); a.onerror = fb; var p = a.play(); if (p && p.catch) p.catch(fb); } catch (e) { fb(); }
 }
-document.addEventListener('visibilitychange', function () { if (!document.hidden && V.n) { var n = V.n; V.n = 0; setTimeout(function () { suara(n); }, 300); } });
+function popPel(n) { // pop-up peringatan pelanggaran untuk siswa
+  var o = $('#pp'); if (o) o.remove();
+  var fin = n >= 3, m = document.createElement('div'); m.className = 'modal'; m.id = 'pp';
+  var dots = [1, 2, 3].map(function (i) { return '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 4px;background:' + (i <= n ? 'var(--bad)' : '#E2E8F0') + '"></span>'; }).join('');
+  m.innerHTML = '<div class="card" style="text-align:center;border-top:6px solid var(--bad)"><div style="font-size:46px;line-height:56px">⚠️</div><h2 style="color:var(--bad);margin:4px 0 10px">' + (fin ? 'Ujian Dikumpulkan Otomatis' : 'Peringatan Pelanggaran ' + n + ' dari 3') + '</h2>' +
+    '<p>' + esc(MSG[n - 1]) + '</p><div style="margin:14px 0">' + dots + '</div><p class="sm muted">Berpindah tab atau jendela selama ujian tercatat dan dilaporkan ke guru.</p>' +
+    '<div class="row" style="justify-content:center"><button class="btn p" id="okp">' + (fin ? 'Lihat Hasil' : 'Saya Mengerti, Lanjutkan Ujian') + '</button></div></div>';
+  document.body.appendChild(m); $('#okp').focus();
+  $('#okp').onclick = function () { m.remove(); if (window.speechSynthesis) speechSynthesis.cancel(); };
+}
+document.addEventListener('visibilitychange', function () { if (!document.hidden && V.n) { var n = V.n; V.n = 0; popPel(n); setTimeout(function () { suara(n); }, 250); } });
 if (window.speechSynthesis) speechSynthesis.getVoices();
 
 /* ---------- RUANG UJIAN ---------- */
@@ -238,7 +248,7 @@ function panel() {
   var adm = S.me.role === 'admin', T = [['dash', 'Dashboard'], ['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
   render('<div class="shell"><nav class="side"><div class="brand">CBT Online<div class="xs" style="color:#adc8f5">' + (adm ? 'Admin' : 'Guru') + '</div></div>' +
     T.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" onclick="App.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') +
-    '<span class="sp"></span><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
+    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
@@ -248,6 +258,12 @@ function tab(t) {
 function pc(h) { $('#pc').innerHTML = h; }
 function baris(rows) { return rows.length ? '' : '<p class="muted">Belum ada data.</p>'; }
 
+function dlg(t, body, ok, fn, danger) { // dialog konfirmasi generik
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md2';
+  m.innerHTML = '<div class="card"><h2>' + t + '</h2><div style="margin-top:8px">' + body + '</div><div class="row"><button class="btn" id="dn">Batal</button><button class="btn ' + (danger ? 'd' : 'p') + '" id="dy">' + ok + '</button></div></div>';
+  document.body.appendChild(m); $('#dn').onclick = function () { m.remove(); };
+  $('#dy').onclick = function () { this.disabled = true; fn(function () { m.remove(); }, this); };
+}
 function tDash() {
   pc('<h1>Dashboard</h1><div class="sk" style="margin-top:16px;min-height:200px"></div>');
   var muat = function () { Api.call('dashboard.stats').then(function (r) { if (P.tab !== 'dash') return; if (r.success) { P.dash = r.data; drawAdmDash(); } else if (!$('#dk')) pc('<p class="err">' + esc(r.message) + '</p>'); }); };
@@ -283,57 +299,99 @@ function drawAdmDash() {
     '<div class="grid g23" style="margin-top:22px"><div class="card"><h2>Distribusi nilai</h2><p class="muted sm" style="margin:2px 0 8px">Seluruh ujian yang sudah dikumpulkan</p>' + chart + '</div><div class="card"><h2>Pelanggaran terbaru</h2><div style="margin-top:8px">' + lg + '</div></div></div>' +
     '<div class="sec"><h2>Ujian terbaru</h2></div><div class="card"><div class="tw">' + tb + '</div></div></div>');
 }
+function pStat(x) { return x.status === 'belum' ? 'belum' : x.status === 'berlangsung' ? 'mengerjakan' : 'selesai'; }
 function tPantau() {
-  pc('<h1>Pantau Ujian</h1><div class="sk" style="margin-top:16px"></div>');
+  clearInterval(P.iv); pc('<h1>Pantau Ujian</h1><div class="sk" style="margin-top:16px;min-height:160px"></div>');
   Api.call('ujian.guru').then(function (r) {
+    if (P.tab !== 'pantau') return;
     if (!r.success) return pc('<h1>Pantau Ujian</h1><p class="err">' + esc(r.message) + '</p>');
     P.uj = r.data;
-    pc('<h1>Pantau Ujian</h1><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap"><select id="su" style="flex:1;min-width:220px"><option value="">— pilih ujian —</option>' +
-      r.data.map(function (u) { return '<option value="' + u.id + '">' + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select><button class="btn" onclick="App.muat()">Segarkan</button></div></div><div id="pt" style="margin-top:16px"></div>');
-    $('#su').onchange = muatPantau;
-    if (P.pid) { $('#su').value = P.pid; P.pid = ''; muatPantau(); }
+    if (!r.data.length) return pc('<h1>Pantau Ujian</h1><div class="card" style="margin-top:16px;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Buat ujian terlebih dahulu.</p><button class="btn p" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>');
+    var n = Date.now(), live = r.data.filter(function (u) { return n >= u.mulai && n <= u.selesai; })[0], ada = r.data.filter(function (u) { return u.id === P.pid; })[0];
+    P.cur = (ada || live || r.data[0]).id; P.pid = ''; P.pf = 'semua'; P.ps = ''; P.pd = null; if (P.auto === undefined) P.auto = true;
+    pc('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Pantau Ujian</h1></div><select id="su" style="max-width:400px">' +
+      r.data.map(function (u) { var b = n >= u.mulai && n <= u.selesai ? '● ' : n < u.mulai ? '◷ ' : '✓ '; return '<option value="' + u.id + '"' + (u.id === P.cur ? ' selected' : '') + '>' + b + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select></div>' +
+      '<div id="pk" style="margin-top:16px"><div class="sk"></div></div><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div id="pch" style="display:flex;gap:8px;flex-wrap:wrap"></div><span style="flex:1"></span>' +
+      '<input id="ps" placeholder="Cari nama / NIS..." style="max-width:210px"><label class="sm" style="display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" id="pa" style="width:auto;min-height:0"' + (P.auto ? ' checked' : '') + '> Otomatis 15 dtk</label>' +
+      '<button class="btn sm" onclick="App.muat()">⟳ Segarkan</button><button class="btn sm" onclick="App.unduhPantau()">Unduh CSV</button></div><div class="tw" id="ptb" style="margin-top:12px"></div></div>');
+    $('#su').onchange = function () { P.cur = this.value; P.pd = null; P.pf = 'semua'; $('#pk').innerHTML = '<div class="sk"></div>'; muatPantau(); };
+    $('#ps').oninput = function () { P.ps = this.value; drawTabel(); };
+    $('#pa').onchange = function () { P.auto = this.checked; };
+    muatPantau(); P.iv = setInterval(function () { if (P.tab !== 'pantau') clearInterval(P.iv); else if (P.auto) muatPantau(true); }, 15000);
   });
 }
-function muatPantau() {
-  var id = $('#su').value; if (!id) return; $('#pt').innerHTML = '<div class="sk"></div>'; busy(true);
-  Api.call('ujian.pantau', { idUjian: id }).then(function (r) {
-    busy(false); if (!r.success) { $('#pt').innerHTML = '<p class="err">' + esc(r.message) + '</p>'; return; }
-    var d = r.data, c = { berlangsung: 0, dikumpulkan: 0, belum: 0, pel: 0 };
-    d.rows.forEach(function (x) { if (x.status === 'belum') c.belum++; else if (x.status === 'berlangsung') c.berlangsung++; else c.dikumpulkan++; if (x.pelanggaran) c.pel++; });
-    var B = { belum: 'b-mut', berlangsung: 'b-info', dikumpulkan: 'b-ok', 'dikumpulkan-otomatis': 'b-warn' };
-    $('#pt').innerHTML = '<div class="grid g4"><div class="card stat"><span class="xs muted">Total peserta</span><b>' + d.rows.length + '</b></div><div class="card stat"><span class="xs muted">Mengerjakan</span><b>' + c.berlangsung + '</b></div><div class="card stat"><span class="xs muted">Dikumpulkan</span><b>' + c.dikumpulkan + '</b></div><div class="card stat"><span class="xs" style="color:var(--bad)">Ada pelanggaran</span><b>' + c.pel + '</b></div></div>' +
-      '<div class="card" style="margin-top:16px"><p>Token ujian: <b class="mono" style="font-size:18px;letter-spacing:.2em">' + esc(d.token) + '</b></p><div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th>Terjawab</th><th>Pindah tab</th><th>Nilai</th></tr></thead><tbody>' +
-      d.rows.map(function (x) { return '<tr style="' + (x.pelanggaran >= 3 ? 'background:#fff5f5' : '') + '"><td class="mono">' + esc(x.nis) + '</td><td>' + esc(x.nama) + '</td><td>' + esc(x.kelas) + '</td><td><span class="badge ' + (B[x.status] || 'b-mut') + '">' + esc(x.status) + '</span></td><td>' + x.jawab + '/' + d.jumlah + '</td><td>' + (x.pelanggaran ? '<span class="badge b-bad">' + x.pelanggaran + 'x</span>' : '0x') + '</td><td>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</td></tr>'; }).join('') + '</tbody></table></div>' + baris(d.rows) + '</div>';
+function muatPantau(silent) {
+  if (!P.cur) return; if (silent !== true) busy(true);
+  Api.call('ujian.pantau', { idUjian: P.cur }).then(function (r) {
+    busy(false); if (P.tab !== 'pantau' || !$('#pk')) return;
+    if (!r.success) { if (silent !== true) $('#pk').innerHTML = '<p class="err">' + esc(r.message) + '</p>'; return; }
+    P.pd = r.data; P.pt = Date.now(); drawPantau();
   });
 }
-
+function drawPantau() {
+  var d = P.pd, n = Date.now(), c = { belum: 0, mengerjakan: 0, selesai: 0, pel: 0 }, tot = d.rows.length;
+  d.rows.forEach(function (x) { c[pStat(x)]++; if (x.pelanggaran) c.pel++; }); P.pc = c;
+  var st = n < d.mulai ? ['b-info', 'Terjadwal'] : n > d.selesai ? ['b-mut', 'Waktu ujian berakhir'] : ['b-ok', '● Sedang berlangsung'], pct = function (v) { return tot ? v / tot * 100 : 0; };
+  var kp = function (t, v, col, s) { return '<div class="card stat" style="border-left:4px solid ' + col + '"><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div>'; };
+  $('#pk').innerHTML = '<div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:240px"><span class="badge ' + st[0] + '">' + st[1] + '</span><h2 style="margin:6px 0 2px">' + esc(d.judul) + '</h2>' +
+    '<div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal<br>' + fmt(d.mulai) + ' – ' + fmt(d.selesai) + '</div></div>' +
+    '<div style="text-align:center"><div class="xs muted">Token ujian</div><div class="mono" style="font-size:28px;font-weight:700;letter-spacing:.25em">' + esc(d.token) + '</div><button class="btn sm" onclick="App.salinToken()">Salin token</button></div>' +
+    '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div>' +
+    '<div class="grid g4" style="margin-top:12px">' + kp('Total peserta', tot, '#1E3A5F', c.belum + ' belum mulai') + kp('Sedang mengerjakan', c.mengerjakan, '#3B82F6', 'saat ini') + kp('Sudah selesai', c.selesai, '#16A34A', Math.round(pct(c.selesai)) + '% peserta') + kp('Ada pelanggaran', c.pel, '#DC2626', 'siswa pindah tab') + '</div>' +
+    '<div class="prog" style="margin-top:12px;height:10px"><i style="width:' + pct(c.selesai) + '%;background:var(--ok)"></i><i style="width:' + pct(c.mengerjakan) + '%;background:#3B82F6"></i></div>' +
+    '<div class="sm muted" style="display:flex;justify-content:space-between"><span>🟩 selesai · 🟦 mengerjakan · ⬜ belum mulai</span><span>Diperbarui ' + new Date(P.pt).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</span></div>';
+  $('#pch').innerHTML = [['semua', 'Semua', tot], ['belum', 'Belum mulai', c.belum], ['mengerjakan', 'Mengerjakan', c.mengerjakan], ['selesai', 'Selesai', c.selesai], ['pel', 'Pelanggaran', c.pel]].map(function (t) { return '<button class="chip' + (P.pf === t[0] ? ' on' : '') + '" onclick="App.pf(\'' + t[0] + '\')">' + t[1] + ' (' + t[2] + ')</button>'; }).join('');
+  drawTabel();
+}
+function drawTabel() {
+  var d = P.pd; if (!d) return; var q = (P.ps || '').toLowerCase(), f = P.pf || 'semua';
+  var B = { belum: ['b-mut', 'Belum mulai'], berlangsung: ['b-info', 'Mengerjakan'], dikumpulkan: ['b-ok', 'Selesai'], 'dikumpulkan-otomatis': ['b-warn', 'Dikumpulkan otomatis'] };
+  var L = d.rows.filter(function (x) { return (f === 'semua' || (f === 'pel' ? x.pelanggaran > 0 : pStat(x) === f)) && (!q || (x.nis + ' ' + x.nama).toLowerCase().indexOf(q) >= 0); });
+  $('#ptb').innerHTML = L.length ? '<table><thead><tr><th>Siswa</th><th>Kelas</th><th>Status</th><th style="min-width:130px">Progres jawaban</th><th>Pindah tab</th><th>Nilai</th></tr></thead><tbody>' + L.map(function (x) {
+    var p = d.jumlah ? Math.round(x.jawab / d.jumlah * 100) : 0, b = B[x.status] || B.belum;
+    return '<tr style="' + (x.pelanggaran >= 3 ? 'background:#FFF5F5' : x.pelanggaran ? 'background:#FFFBEB' : '') + '"><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><div><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></div></div></td><td>' + esc(x.kelas) + '</td>' +
+      '<td><span class="badge ' + b[0] + '">' + b[1] + '</span></td><td><div class="sm">' + x.jawab + ' / ' + d.jumlah + '</div><div class="prog" style="margin:4px 0 0"><i style="width:' + p + '%;background:var(--primary)"></i></div></td>' +
+      '<td>' + (x.pelanggaran >= 3 ? '<span class="badge b-bad">' + x.pelanggaran + 'x terkunci</span>' : x.pelanggaran ? '<span class="badge b-warn">' + x.pelanggaran + 'x</span>' : '<span class="muted">0x</span>') + '</td><td><b>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</b></td></tr>';
+  }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada siswa pada filter ini.</p>';
+}
+function hapusUjian() {
+  var d = P.pd, c = P.pc || { selesai: 0, mengerjakan: 0 }; if (!d) return;
+  dlg('Hapus ujian ini?', '<p><b>' + esc(d.judul) + '</b></p><p class="muted">Ujian beserta <b>' + (c.selesai + c.mengerjakan) + ' sesi pengerjaan</b>, nilai, dan log pelanggarannya akan dihapus <b>permanen</b>. Bank soal tidak terpengaruh.</p>' +
+    (c.mengerjakan ? '<div class="note b">Ada ' + c.mengerjakan + ' siswa yang sedang mengerjakan. Ujian tidak dapat dihapus sampai mereka selesai.</div>' : ''), 'Ya, Hapus Ujian', function (close, btn) {
+    Api.call('ujian.hapus', { idUjian: P.cur }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Ujian dihapus'); P.cur = ''; tPantau(); });
+  }, true);
+}
 function tBuat() {
   pc('<h1>Buat Ujian</h1><div class="sk" style="margin-top:16px"></div>');
-  Api.call('soal.list').then(function (r) {
-    if (!r.success) return pc('<p class="err">' + esc(r.message) + '</p>');
-    P.soal = r.data; P.sel = {};
+  Promise.all([Api.call('soal.list'), Api.call('meta.opsi')]).then(function (rs) {
+    var a = rs[0], b = rs[1]; if (!a.success || !b.success) return pc('<p class="err">' + esc((a.success ? b : a).message) + '</p>');
+    P.soal = a.data; P.sel = {}; P.kls = {}; var M = b.data.mapel, KL = b.data.kelas;
     var d0 = new Date(Date.now() + 36e5), p2 = function (n) { return ('0' + n).slice(-2); }, loc = function (d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes()); };
-    pc('<h1>Buat Ujian</h1><form class="card" id="fb" style="margin-top:16px"><div class="grid g2"><label class="field"><span>Judul ujian *</span><input name="judul" required></label><label class="field"><span>Mata pelajaran</span><input name="mapel"></label>' +
-      '<label class="field"><span>Kelas peserta * (pisahkan koma)</span><input name="kelas" placeholder="X MIPA 1, X MIPA 2" required></label><label class="field"><span>Durasi (menit) *</span><input name="durasi" type="number" min="1" value="90" required></label>' +
-      '<label class="field"><span>Ujian dapat dimulai *</span><input name="mulai" type="datetime-local" value="' + loc(d0) + '" required></label><label class="field"><span>Ditutup pada *</span><input name="selesai" type="datetime-local" value="' + loc(new Date(d0.getTime() + 864e5)) + '" required></label></div>' +
-      '<h3 style="margin:8px 0 10px">Pilih soal <span class="badge b-info" id="cs">0 dipilih</span></h3><input id="fs" placeholder="Cari mapel / isi soal..." style="margin-bottom:10px"><div id="ls" style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px"></div>' +
+    pc('<h1>Buat Ujian</h1><form class="card" id="fb" style="margin-top:16px"><div class="grid g2"><label class="field"><span>Judul ujian *</span><input name="judul" required placeholder="mis. PAS Ganjil 2026"></label>' +
+      '<label class="field"><span>Mata pelajaran *</span><select name="mapel" id="fm" required><option value="">— pilih mata pelajaran —</option>' + M.map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('') + '</select>' + (M.length ? '' : '<span class="err">Bank soal masih kosong. Import soal dulu.</span>') + '</label></div>' +
+      '<div class="field"><span>Kelas peserta * <small class="muted">(klik untuk memilih, dari data siswa)</small></span><div style="display:flex;flex-wrap:wrap;gap:8px">' + (KL.length ? KL.map(function (k) { return '<button type="button" class="chip" data-k="' + esc(k) + '" onclick="App.kls(this)">' + esc(k) + '</button>'; }).join('') : '<span class="err">Belum ada data siswa. Import siswa dulu.</span>') + '</div></div>' +
+      '<div class="grid g3"><label class="field"><span>Durasi (menit) *</span><input name="durasi" type="number" min="1" value="90" required></label><label class="field"><span>Ujian dapat dimulai *</span><input name="mulai" type="datetime-local" value="' + loc(d0) + '" required></label><label class="field"><span>Ditutup pada *</span><input name="selesai" type="datetime-local" value="' + loc(new Date(d0.getTime() + 864e5)) + '" required></label></div>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px"><h3>Pilih soal <span class="badge b-info" id="cs">0 dipilih</span></h3><span style="flex:1"></span><button type="button" class="btn sm" onclick="App.pilSemua()">Pilih semua yang tampil</button><button type="button" class="btn sm" onclick="App.pilKosong()">Kosongkan</button></div>' +
+      '<input id="fs" placeholder="Cari isi soal..." style="margin-bottom:10px"><div id="ls" style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px"></div>' +
       '<div class="err" id="e"></div><button class="btn p" style="margin-top:14px">Buat &amp; Aktifkan Ujian</button></form><div id="hs"></div>');
-    drawSoalPilih(); $('#fs').oninput = drawSoalPilih;
+    drawSoalPilih(); $('#fs').oninput = drawSoalPilih; $('#fm').onchange = function () { P.sel = {}; drawSoalPilih(); };
     $('#fb').onsubmit = function (ev) {
-      ev.preventDefault(); var f = ev.target, ids = Object.keys(P.sel), b = $('button', f); b.disabled = true;
-      Api.call('ujian.buat', { judul: f.judul.value, mapel: f.mapel.value, kelas: f.kelas.value, durasi: f.durasi.value, mulai: new Date(f.mulai.value).getTime(), selesai: new Date(f.selesai.value).getTime(), soal: ids }).then(function (r) {
-        b.disabled = false; if (!r.success) { $('#e').textContent = r.message; return; }
-        $('#e').textContent = ''; toast('Ujian dibuat'); $('#hs').innerHTML = '<div class="note" style="text-align:center"><div class="xs muted">Token ujian — bagikan ke siswa saat ujian</div><div class="token mono" style="font-size:36px;font-weight:700;letter-spacing:.3em">' + esc(r.data.token) + '</div></div>'; f.reset();
+      ev.preventDefault(); var f = ev.target, ids = Object.keys(P.sel), kl = Object.keys(P.kls), bt = $('button.p', f), e = $('#e');
+      if (!kl.length) { e.textContent = 'Pilih minimal satu kelas.'; return; } if (!ids.length) { e.textContent = 'Pilih minimal satu soal.'; return; }
+      bt.disabled = true;
+      Api.call('ujian.buat', { judul: f.judul.value, mapel: f.mapel.value, kelas: kl.join(', '), durasi: f.durasi.value, mulai: new Date(f.mulai.value).getTime(), selesai: new Date(f.selesai.value).getTime(), soal: ids }).then(function (r) {
+        bt.disabled = false; if (!r.success) { e.textContent = r.message; return; }
+        e.textContent = ''; toast('Ujian dibuat'); $('#hs').innerHTML = '<div class="note" style="text-align:center"><div class="xs muted">Token ujian — bagikan ke siswa saat ujian</div><div class="token mono" style="font-size:36px;font-weight:700;letter-spacing:.3em">' + esc(r.data.token) + '</div><button type="button" class="btn p" onclick="App.tab(\'pantau\')">Buka Pantau Ujian</button></div>';
       });
     };
   });
 }
 function drawSoalPilih() {
-  var q = ($('#fs').value || '').toLowerCase(), L = P.soal.filter(function (s) { return !q || (s.mapel + ' ' + s.t).toLowerCase().indexOf(q) >= 0; });
-  $('#ls').innerHTML = L.length ? '<table><tbody>' + L.map(function (s) { return '<tr><td style="width:36px"><input type="checkbox" style="min-height:0;width:auto" ' + (P.sel[s.id] ? 'checked' : '') + ' onchange="App.pil(\'' + s.id + '\',this.checked)"></td><td><span class="badge b-info">' + esc(s.mapel || '-') + '</span> ' + esc(s.t) + '</td><td>Kunci ' + esc(s.kunci) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted" style="padding:14px">Bank soal kosong. Impor soal dulu di menu Bank Soal.</p>';
+  var m = $('#fm').value, q = ($('#fs').value || '').toLowerCase();
+  P.vis = m ? P.soal.filter(function (s) { return (s.mapel || 'Umum') === m && (!q || s.t.toLowerCase().indexOf(q) >= 0); }) : [];
+  $('#ls').innerHTML = !m ? '<p class="muted" style="padding:14px">Pilih mata pelajaran terlebih dahulu.</p>' : P.vis.length ? '<table><tbody>' + P.vis.map(function (s) { return '<tr><td style="width:36px"><input type="checkbox" style="min-height:0;width:auto" ' + (P.sel[s.id] ? 'checked' : '') + ' onchange="App.pil(\'' + s.id + '\',this.checked)"></td><td>' + esc(s.t) + '</td><td class="sm muted">Kunci ' + esc(s.kunci) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted" style="padding:14px">Tidak ada soal untuk mata pelajaran ini.</p>';
   $('#cs').textContent = Object.keys(P.sel).length + ' dipilih';
 }
-
 /* file Excel/CSV -> array objek */
 function csvParse(t) {
   t = t.replace(/^\uFEFF/, ''); var l1 = t.split('\n')[0], d = l1.split(';').length > l1.split(',').length ? ';' : ',', rows = [], r = [], f = '', q = false;
@@ -398,14 +456,76 @@ function listSoal() {
 function tSiswa() {
   pc('<h1>Kelola Siswa</h1><div class="card" style="margin-top:16px"><h3>Import data siswa dari Excel / CSV</h3><p class="muted sm">Kolom: NIS, Nama, Kelas. Di Excel, format kolom NIS sebagai <b>Teks</b> agar angka 0 di depan tidak hilang. Aman diulang: NIS yang sama hanya diperbarui, tidak digandakan.</p>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input type="file" id="fi" accept=".csv,.xlsx,.xls" style="flex:1;min-width:220px"><button class="btn" onclick="App.tmplSiswa()">Unduh template</button></div><div id="pv" class="muted sm" style="margin:10px 0"></div>' +
-    '<div style="display:flex;gap:8px"><button class="btn" id="b1" disabled>Pindai (dry-run)</button><button class="btn p" id="b2" disabled>Jalankan Import</button></div><div id="rs"></div></div>');
+    '<div style="display:flex;gap:8px"><button class="btn" id="b1" disabled>Pindai (dry-run)</button><button class="btn p" id="b2" disabled>Jalankan Import</button></div><div id="rs"></div></div><div class="card" style="margin-top:16px" id="sl"><div class="sk"></div></div>');
   var rows = [];
   $('#fi').onchange = function () { var f = this.files[0]; if (!f) return; bacaFile(f).then(function (r) { rows = r; $('#pv').textContent = rows.length + ' baris terbaca dari ' + f.name; $('#b1').disabled = $('#b2').disabled = !rows.length; }, function (e) { toast(e.message, 'error'); }); };
   var run = function (dry) { return function () { kirimBatch('siswa.import', rows, { dryRun: dry }, 60).then(function (r) {
     $('#rs').innerHTML = hasilImp(r, dry) + (r.akunBaru.length ? '<div class="note w"><b>Simpan sekarang!</b> Password awal siswa baru hanya tampil sekali dan tidak dapat dilihat lagi.<br><button class="btn a" style="margin-top:8px" id="dl">Unduh daftar akun (CSV)</button></div>' : '');
+    if (!dry) listSiswa();
     var d = $('#dl'); if (d) d.onclick = function () { unduh('akun-siswa-baru.csv', [['NIS', 'Nama', 'Kelas', 'Password']].concat(r.akunBaru.map(function (a) { return [a.NIS, a.Nama, a.Kelas, a.Password]; }))); };
   }, function (e) { toast(e.message, 'error'); }); }; };
   $('#b1').onclick = run(true); $('#b2').onclick = function () { if (confirm('Import ' + rows.length + ' siswa?')) run(false)(); };
+  listSiswa();
+}
+function listSiswa() {
+  Api.call('siswa.list').then(function (r) {
+    var el = $('#sl'); if (!el) return;
+    if (!r.success) { el.innerHTML = '<p class="err">' + esc(r.message) + '</p>'; return; }
+    P.sw = r.data; drawSiswa();
+  });
+}
+function drawSiswa() {
+  var el = $('#sl'); if (!el) return; var q = (P.sq || '').toLowerCase(), k = P.sk || '', kl = {};
+  P.sw.forEach(function (s) { kl[s.kelas] = 1; });
+  var L = P.sw.filter(function (s) { return (!k || s.kelas === k) && (!q || (s.nis + ' ' + s.nama).toLowerCase().indexOf(q) >= 0); });
+  el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><h3>Daftar siswa <span class="badge b-info">' + P.sw.length + '</span></h3><span style="flex:1"></span><button class="btn p sm" onclick="App.sForm(\'\')">+ Tambah siswa</button><input id="sq" placeholder="Cari NIS / nama..." value="' + esc(P.sq || '') + '" style="max-width:230px">' +
+    '<select id="sk" style="max-width:180px"><option value="">Semua kelas</option>' + Object.keys(kl).sort().map(function (x) { return '<option' + (k === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
+    '<p class="muted sm">Password tersimpan sebagai hash sehingga <b>tidak dapat dilihat</b>. Admin dapat menetapkan password baru secara manual (atau acak) lewat tombol Password.</p>' +
+    '<div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>' +
+    L.slice(0, 200).map(function (s) { return '<tr><td class="mono">' + esc(s.nis) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.kelas) + '</td><td><span class="badge ' + (s.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(s.status) + '</span></td><td class="right"><button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.pwSiswa(\'' + esc(s.nis) + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button></td></tr>'; }).join('') +
+    '</tbody></table></div>' + (L.length > 200 ? '<p class="muted sm">Menampilkan 200 dari ' + L.length + ' — gunakan pencarian.</p>' : L.length ? '' : '<p class="muted">Tidak ada siswa.</p>');
+  $('#sq').oninput = function () { P.sq = this.value; var p = this.selectionStart; drawSiswa(); var e = $('#sq'); e.focus(); e.setSelectionRange(p, p); };
+  $('#sk').onchange = function () { P.sk = this.value; drawSiswa(); };
+}
+function sForm(nis) {
+  var s = nis ? P.sw.filter(function (x) { return x.nis === nis; })[0] : null, kl = {}; P.sw.forEach(function (x) { kl[x.kelas] = 1; });
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card"><h2>' + (s ? 'Edit siswa' : 'Tambah siswa') + '</h2><div style="margin-top:12px"><label class="field"><span>NIS *</span><input id="fn" value="' + esc(s ? s.nis : '') + '"' + (s ? ' disabled' : '') + ' required></label>' +
+    '<label class="field"><span>Nama lengkap *</span><input id="fa" value="' + esc(s ? s.nama : '') + '" required></label><label class="field"><span>Kelas *</span><input id="fk" list="dlk" value="' + esc(s ? s.kelas : '') + '" required><datalist id="dlk">' + Object.keys(kl).map(function (k) { return '<option value="' + esc(k) + '">'; }).join('') + '</datalist></label>' +
+    (s ? '<label class="field"><span>Status</span><select id="fst"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif (tidak bisa login)</option></select></label>' : '') +
+    '<label class="field"><span>Password ' + (s ? '(kosongkan jika tidak diubah)' : '(kosongkan = dibuat acak)') + '</span><input id="fp" autocomplete="off" placeholder="min. 6 karakter"></label></div><div class="err" id="e"></div><div id="hs"></div>' +
+    '<div class="row"><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button><button class="btn p" id="sv">Simpan</button></div></form>';
+  document.body.appendChild(m); if (s) $('#fst').value = s.status; $(s ? '#fa' : '#fn').focus();
+  m.querySelector('form').onsubmit = function (ev) {
+    ev.preventDefault(); var b = $('#sv'); b.disabled = true;
+    Api.call('siswa.simpan', { baru: !s, nis: $('#fn').value, nama: $('#fa').value, kelas: $('#fk').value, status: s ? $('#fst').value : 'aktif', password: $('#fp').value }).then(function (r) {
+      if (!r.success) { b.disabled = false; $('#e').textContent = r.message; return; }
+      $('#e').textContent = ''; listSiswa(); toast('Data siswa disimpan');
+      if (r.data.password) { $('#hs').innerHTML = '<div class="note w"><b>Password (catat sekarang, hanya tampil sekali):</b><br><span class="mono" style="font-size:20px;letter-spacing:.08em">' + esc(r.data.password) + '</span></div>'; if (!s) b.disabled = true; else b.disabled = false; }
+      else m.remove();
+    });
+  };
+}
+function sHapus(nis) {
+  var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
+  dlg('Hapus siswa?', '<p><b>' + esc(s.nama) + '</b> · NIS ' + esc(s.nis) + ' · ' + esc(s.kelas) + '</p><p class="muted">Akun dihapus permanen dan tidak muncul lagi di pantau maupun laporan. Untuk menonaktifkan sementara, gunakan <b>Edit → Status</b>.</p>', 'Ya, Hapus', function (close, btn) {
+    Api.call('siswa.hapus', { nis: nis }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Siswa dihapus'); listSiswa(); });
+  }, true);
+}
+function pwSiswa(nis) {
+  var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card"><h2>Ubah password siswa</h2><p class="muted">' + esc(s.nama) + ' · NIS ' + esc(s.nis) + ' · ' + esc(s.kelas) + '</p><label class="field"><span>Password baru</span><input id="np" placeholder="Kosongkan untuk dibuat acak" autocomplete="off"></label><div class="err" id="e"></div><div id="hs"></div>' +
+    '<div class="row"><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button><button class="btn p" id="sv">Simpan</button></div></form>';
+  document.body.appendChild(m); $('#np').focus();
+  m.querySelector('form').onsubmit = function (ev) {
+    ev.preventDefault(); var b = $('#sv'); b.disabled = true;
+    Api.call('siswa.password', { nis: nis, password: $('#np').value.trim() }).then(function (r) {
+      b.disabled = false; if (!r.success) { $('#e').textContent = r.message; return; }
+      $('#e').textContent = ''; $('#np').value = ''; toast('Password diubah');
+      $('#hs').innerHTML = '<div class="note w"><b>Password baru (catat sekarang, hanya tampil sekali):</b><br><span class="mono" style="font-size:20px;letter-spacing:.08em">' + esc(r.data.password) + '</span></div>';
+    });
+  };
 }
 function tGuru() {
   pc('<h1>Kelola Guru</h1><form class="card" id="fg" style="margin-top:16px;max-width:520px"><h3>Tambah akun guru</h3><label class="field"><span>Nama lengkap</span><input name="nama" required></label><label class="field"><span>Username (huruf kecil/angka)</span><input name="username" required></label><div class="err" id="e"></div><button class="btn p">Buat akun</button><div id="rs"></div></form>');
@@ -453,9 +573,16 @@ window.App = {
   home: function () { dash(); }, filter: function (k) { S.filter = k; drawDash(); }, buka: buka, mulai: function () { mulai(false); },
   pilih: pilih, nav: function (d) { X.idx = Math.max(0, Math.min(X.soal.length - 1, X.idx + d)); localSave(); drawQ(); }, ke: function (i) { X.idx = i; localSave(); drawQ(); },
   ragu: function () { var s = cur(); if (X.ragu[s.id]) delete X.ragu[s.id]; else X.ragu[s.id] = 1; localSave(); drawQ(); },
-  konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: muatPantau,
+  konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: function () { muatPantau(); },
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
   lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '.csv', P.lcsv); },
+  pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
+  pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
+  salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
+  unduhPantau: function () { var d = P.pd; if (!d) return; unduh('pantau-' + d.judul.replace(/\W+/g, '-') + '.csv', [['NIS', 'Nama', 'Kelas', 'Status', 'Terjawab', 'Pindah tab', 'Nilai']].concat(d.rows.map(function (x) { return [x.nis, x.nama, x.kelas, x.status, x.jawab + '/' + d.jumlah, x.pelanggaran, x.nilai == null ? '' : x.nilai]; }))); },
+  kls: function (b) { var k = b.getAttribute('data-k'); if (P.kls[k]) { delete P.kls[k]; b.className = 'chip'; } else { P.kls[k] = 1; b.className = 'chip on'; } },
+  pilSemua: function () { (P.vis || []).forEach(function (s) { P.sel[s.id] = 1; }); drawSoalPilih(); },
+  pilKosong: function () { P.sel = {}; drawSoalPilih(); },
   pantauId: function (id) { P.pid = id; tab('pantau'); },
   tmplSoal: function () { unduh('template-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci'], ['Matematika', 'Hasil dari 2 + 3 adalah ...', '4', '5', '6', '7', '', 'B']]); },
   tmplSiswa: function () { unduh('template-siswa.csv', [['NIS', 'Nama', 'Kelas'], ['202610101', 'Contoh Siswa', 'X MIPA 1']]); }
