@@ -68,3 +68,13 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);bo
 .side{position:static;height:auto;flex-direction:row;overflow-x:auto;padding:8px}.side .brand,.side .sp{display:none}.side button{white-space:nowrap;border-left:0;border-bottom:3px solid transparent}.side button.on{border-bottom-color:var(--accent)}
 .top{padding:10px 14px}.top .who{display:none}.hero{padding:20px}h1{font-size:24px}.main{padding:14px}.qtext{font-size:17px}}
 @media(max-width:480px){.g4{grid-template-columns:1fr}.nav{grid-template-columns:repeat(6,1fr)}.score{width:160px;height:160px}.score b{font-size:42px}}
+
+/* dasbor admin & login staf */
+.auth.staf{background:linear-gradient(135deg,#022448,#1E3A5F)}.auth a{color:var(--primary);font-weight:600}
+.mtop{display:flex;align-items:center;gap:12px;margin-bottom:18px}.mtop .sp{flex:1}.me{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 14px 4px 4px;font-size:13px;line-height:16px}
+.me i{width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:700}
+.kpi{display:flex;align-items:center;gap:14px}.kpi .ico{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:22px;flex:none}.kpi b{font-size:26px;line-height:30px;display:block}
+.g6{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}.g23{grid-template-columns:2fr 1fr}.sec{margin:22px 0 10px;display:flex;align-items:center;gap:10px}.sec .sp{flex:1}
+.prog{height:8px;border-radius:99px;background:#E8EAF3;overflow:hidden;display:flex;margin:8px 0}.prog i{display:block;height:100%}
+.lg{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px;line-height:18px}.lg:first-of-type{border-top:0}.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);margin-top:6px;flex:none}
+@media(max-width:900px){.g23{grid-template-columns:1fr}}

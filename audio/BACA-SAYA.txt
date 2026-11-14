@@ -1,0 +1,7 @@
+Folder ini OPSIONAL. Tanpa berkas apa pun di sini, peringatan pindah tab diucapkan oleh suara bahasa Indonesia bawaan perangkat siswa.
+
+Untuk memakai REKAMAN SUARA ORANG (mis. suara guru/proktor), taruh 3 berkas MP3 dengan nama persis:
+  peringatan-1.mp3   (peringatan pertama)
+  peringatan-2.mp3   (peringatan kedua)
+  peringatan-3.mp3   (ujian dikumpulkan otomatis)
+Lalu push ulang ke GitHub. Berkas yang ada otomatis diputar lebih dulu; bila tidak ada, dipakai suara bawaan perangkat.

@@ -2,7 +2,7 @@
 (function () {
   var URL_ = (window.APP_CONFIG || {}).GAS_URL || '';
   var SIAP = URL_ && !/GANTI|XXXX/.test(URL_);
-  var KEY = 'cbt_sesi';
+  var KEY = 'cbt_sesi_' + (window.APP_MODE === 'staf' ? 'staf' : 'siswa'); // sesi siswa & staf terpisah
   var Sesi = {
     ambil: function () { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } },
     simpan: function (o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} },

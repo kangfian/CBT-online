@@ -4,7 +4,8 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var P = { tab: 'pantau', soal: null, sel: {}, data: [] };
+var MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
+var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 function $(s, r) { return (r || document).querySelector(s); }
@@ -25,14 +26,15 @@ function topbar() {
 
 /* ---------- LOGIN ---------- */
 function viewLogin(msg) {
-  render('<div class="auth"><form class="card" id="f"><div style="text-align:center;margin-bottom:18px"><h1>CBT Online</h1><div class="muted">' + esc(CFG.NAMA_SEKOLAH) + '</div></div>' +
-    '<label class="field"><span>NIS / Username</span><input id="id" autocomplete="username" required></label>' +
+  var st = MODE === 'staf';
+  render('<div class="auth' + (st ? ' staf' : '') + '"><form class="card" id="f"><div style="text-align:center;margin-bottom:18px"><h1>' + (st ? 'Portal Admin &amp; Guru' : 'CBT Online') + '</h1><div class="muted">' + esc(CFG.NAMA_SEKOLAH) + '</div></div>' +
+    '<label class="field"><span>' + (st ? 'Username' : 'NIS') + '</span><input id="id" autocomplete="username" required></label>' +
     '<label class="field"><span>Password</span><input id="pw" type="password" autocomplete="current-password" required></label>' +
     '<div class="err" id="e">' + esc(msg || (Api.siap ? '' : 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.')) + '</div>' +
-    '<button class="btn p w" style="margin-top:12px">Masuk</button></form></div>');
+    '<button class="btn p w" style="margin-top:12px">Masuk</button><p class="sm" style="text-align:center;margin:16px 0 0">' + (st ? '<a href="index.html">← Halaman login siswa</a>' : '<a href="admin.html">Admin / Guru? Masuk di sini</a>') + '</p></form></div>');
   $('#f').onsubmit = function (ev) {
     ev.preventDefault(); var b = $('button', this); b.disabled = true; b.textContent = 'Memeriksa...'; busy(true);
-    Api.call('login', { id: $('#id').value, password: $('#pw').value }).then(function (r) {
+    Api.call('login', { id: $('#id').value, password: $('#pw').value, tipe: MODE }).then(function (r) {
       busy(false);
       if (r.success) { Sesi.simpan({ token: r.data.token, me: r.data.me }); S.me = r.data.me; masuk(); }
       else { b.disabled = false; b.textContent = 'Masuk'; $('#e').textContent = r.message; }
@@ -109,6 +111,20 @@ function mulai(resume) {
   });
 }
 
+/* ---------- SUARA PERINGATAN ---------- */
+var MSG = ['Peringatan pertama. Anda terdeteksi berpindah tab. Mohon tetap berada di halaman ujian.', 'Peringatan kedua. Jika Anda berpindah tab sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'];
+function tts(n) { // suara pengucap (bahasa Indonesia) bawaan perangkat
+  if (!window.speechSynthesis) return;
+  var u = new SpeechSynthesisUtterance(MSG[n - 1]), v = speechSynthesis.getVoices().filter(function (x) { return /^id/i.test(x.lang); })[0];
+  u.lang = 'id-ID'; u.rate = 0.95; u.volume = 1; if (v) u.voice = v; speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+function suara(n) { // utamakan rekaman suara orang (audio/peringatan-N.mp3) bila ada, jika tidak pakai tts
+  var done = false, fb = function () { if (!done) { done = true; tts(n); } };
+  try { var a = new Audio('audio/peringatan-' + n + '.mp3'); a.onerror = fb; var p = a.play(); if (p && p.catch) p.catch(fb); } catch (e) { fb(); }
+}
+document.addEventListener('visibilitychange', function () { if (!document.hidden && V.n) { var n = V.n; V.n = 0; setTimeout(function () { suara(n); }, 300); } });
+if (window.speechSynthesis) speechSynthesis.getVoices();
+
 /* ---------- RUANG UJIAN ---------- */
 function rng(str) { var h = 1779033703 ^ str.length; for (var i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
   var a = h >>> 0; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -173,7 +189,7 @@ function tick() {
 }
 function onVis() {
   if (!X || !X.aktif || !document.hidden) return;
-  X.pel++; banner();
+  X.pel++; V.n = Math.min(X.pel, 3); banner();
   Api.call('pelanggaran.catat', { idSesi: X.id }).then(function (r) {
     if (r.success && r.data && r.data.hasil) tamat(r.data.hasil);
     else if (r.success && r.data && r.data.selesai) kumpul(true);
@@ -219,19 +235,54 @@ function viewHasil(r, judul) {
 
 /* ---------- PANEL GURU / ADMIN ---------- */
 function panel() {
-  var adm = S.me.role === 'admin', T = [['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
+  var adm = S.me.role === 'admin', T = [['dash', 'Dashboard'], ['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
   render('<div class="shell"><nav class="side"><div class="brand">CBT Online<div class="xs" style="color:#adc8f5">' + (adm ? 'Admin' : 'Guru') + '</div></div>' +
     T.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" onclick="App.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') +
-    '<span class="sp"></span><button onclick="App.keluar()">Keluar (' + esc(S.me.nama) + ')</button></nav><main class="main" id="pc"></main></div>');
+    '<span class="sp"></span><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
-  P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = b.dataset.t === t ? 'on' : ''; });
-  ({ pantau: tPantau, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
+  clearInterval(P.iv); P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = b.dataset.t === t ? 'on' : ''; });
+  ({ dash: tDash, pantau: tPantau, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
 }
 function pc(h) { $('#pc').innerHTML = h; }
 function baris(rows) { return rows.length ? '' : '<p class="muted">Belum ada data.</p>'; }
 
+function tDash() {
+  pc('<h1>Dashboard</h1><div class="sk" style="margin-top:16px;min-height:200px"></div>');
+  var muat = function () { Api.call('dashboard.stats').then(function (r) { if (P.tab !== 'dash') return; if (r.success) { P.dash = r.data; drawAdmDash(); } else if (!$('#dk')) pc('<p class="err">' + esc(r.message) + '</p>'); }); };
+  muat(); P.iv = setInterval(function () { if (P.tab === 'dash') muat(); else clearInterval(P.iv); }, 30000);
+}
+function drawAdmDash() {
+  var d = P.dash, h = d.hitung, adm = S.me.role === 'admin';
+  var kpi = function (t, v, ic, bg, s) { return '<div class="card kpi"><div class="ico" style="background:' + bg + '">' + ic + '</div><div><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div></div>'; };
+  var K = kpi('Siswa aktif', h.siswa, '👥', '#DBEAFE', 'terdaftar') + (adm ? kpi('Guru', h.guru, '🎓', '#FEF3C7', 'akun aktif') : '') + kpi('Bank soal', h.soal, '📚', '#E0E7FF', 'butir soal') +
+    kpi('Ujian aktif', h.aktif, '📝', '#DCFCE7', 'dari ' + h.ujian + ' ujian') + kpi('Sedang mengerjakan', h.mengerjakan, '⏱', '#FEF9C3', 'siswa saat ini') + kpi('Sudah mengumpulkan', h.selesai, '✅', '#DCFCE7', 'sesi selesai') + kpi('Pelanggaran', h.pelanggaran, '⚠', '#FEE2E2', 'pindah tab tercatat');
+  var live = d.ujian.filter(function (u) { return u.status !== 'selesai'; });
+  var lc = live.length ? live.map(function (u) {
+    var p = u.peserta || 1, B = u.status === 'berlangsung';
+    return '<div class="card"><div style="display:flex;gap:8px;justify-content:space-between"><span class="badge ' + (B ? 'b-ok' : 'b-info') + '">' + (B ? '● Berlangsung' : 'Terjadwal') + '</span><span class="sm muted">' + esc(u.kelas) + '</span></div><h3 style="margin:8px 0 2px">' + esc(u.judul) + '</h3><div class="sm muted">' + fmt(u.mulai) + ' – ' + fmt(u.selesai) + '</div>' +
+      '<div class="prog"><i style="width:' + (u.dikumpulkan / p * 100) + '%;background:var(--ok)"></i><i style="width:' + (u.mengerjakan / p * 100) + '%;background:#3B82F6"></i></div>' +
+      '<div class="sm" style="display:flex;justify-content:space-between"><span>' + u.dikumpulkan + ' selesai · ' + u.mengerjakan + ' mengerjakan · ' + Math.max(0, u.peserta - u.dikumpulkan - u.mengerjakan) + ' belum</span><span>' + u.pel + ' ⚠</span></div>' +
+      '<button class="btn sm" style="margin-top:10px" onclick="App.pantauId(\'' + u.id + '\')">Pantau →</button></div>';
+  }).join('') : '<div class="card muted" style="grid-column:1/-1;text-align:center;padding:26px">Tidak ada ujian yang sedang berlangsung atau terjadwal.</div>';
+  var mx = Math.max.apply(null, d.hist.concat([1])), lab = ['< 60', '60–69', '70–79', '80–89', '90–100'], col = ['#EF4444', '#F59E0B', '#EAB308', '#3B82F6', '#16A34A'];
+  var chart = '<svg viewBox="0 0 400 200" style="width:100%;height:auto" role="img" aria-label="Distribusi nilai">' + d.hist.map(function (v, i) {
+    var hh = Math.round(v / mx * 130), x = 20 + i * 76;
+    return '<rect x="' + x + '" y="' + (150 - hh) + '" width="56" height="' + hh + '" rx="6" fill="' + col[i] + '"/><text x="' + (x + 28) + '" y="' + (144 - hh) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#1A1A2E">' + v + '</text><text x="' + (x + 28) + '" y="174" text-anchor="middle" font-size="12" fill="#43474e">' + lab[i] + '</text>';
+  }).join('') + '<line x1="10" y1="150" x2="390" y2="150" stroke="#E2E8F0"/></svg>';
+  var lg = d.log.length ? d.log.map(function (l) { return '<div class="lg"><span class="dot"></span><div><b>' + esc(l.nama) + '</b> pindah tab<br><span class="muted">' + esc(l.ujian) + ' · ' + fmt(l.waktu) + '</span></div></div>'; }).join('') : '<p class="muted sm">Belum ada pelanggaran tercatat.</p>';
+  var SB = { berlangsung: 'b-ok', terjadwal: 'b-info', selesai: 'b-mut' };
+  var tb = d.ujian.length ? '<table><thead><tr><th>Ujian</th><th>Kelas</th><th>Jadwal</th><th>Status</th><th>Peserta</th><th>Selesai</th><th>Rata-rata</th><th>Pelanggaran</th><th></th></tr></thead><tbody>' + d.ujian.map(function (u) {
+    return '<tr><td><b>' + esc(u.judul) + '</b></td><td>' + esc(u.kelas) + '</td><td class="sm">' + fmt(u.mulai) + '</td><td><span class="badge ' + SB[u.status] + '">' + u.status + '</span></td><td>' + u.peserta + '</td><td>' + u.dikumpulkan + '</td><td>' + (u.rata == null ? '—' : u.rata) + '</td><td>' + (u.pel ? '<span class="badge b-bad">' + u.pel + 'x</span>' : '0') + '</td><td><button class="btn sm" onclick="App.pantauId(\'' + u.id + '\')">Pantau</button></td></tr>';
+  }).join('') + '</tbody></table>' : '<p class="muted">Belum ada ujian. Mulai dengan menambah soal lalu buat ujian.</p>';
+  pc('<div id="dk"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><h1>Dashboard</h1><div class="muted sm">Pembaruan otomatis tiap 30 detik · terakhir ' + new Date(d.now).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</div></div><span class="sp" style="flex:1"></span>' +
+    '<button class="btn" onclick="App.tab(\'soal\')">+ Import Soal</button>' + (adm ? '<button class="btn" onclick="App.tab(\'siswa\')">+ Import Siswa</button>' : '') + '<button class="btn p" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>' +
+    '<div class="grid g6" style="margin-top:18px">' + K + '</div>' +
+    '<div class="sec"><h2>Ujian berlangsung &amp; terjadwal</h2></div><div class="grid g3">' + lc + '</div>' +
+    '<div class="grid g23" style="margin-top:22px"><div class="card"><h2>Distribusi nilai</h2><p class="muted sm" style="margin:2px 0 8px">Seluruh ujian yang sudah dikumpulkan</p>' + chart + '</div><div class="card"><h2>Pelanggaran terbaru</h2><div style="margin-top:8px">' + lg + '</div></div></div>' +
+    '<div class="sec"><h2>Ujian terbaru</h2></div><div class="card"><div class="tw">' + tb + '</div></div></div>');
+}
 function tPantau() {
   pc('<h1>Pantau Ujian</h1><div class="sk" style="margin-top:16px"></div>');
   Api.call('ujian.guru').then(function (r) {
@@ -240,6 +291,7 @@ function tPantau() {
     pc('<h1>Pantau Ujian</h1><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap"><select id="su" style="flex:1;min-width:220px"><option value="">— pilih ujian —</option>' +
       r.data.map(function (u) { return '<option value="' + u.id + '">' + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select><button class="btn" onclick="App.muat()">Segarkan</button></div></div><div id="pt" style="margin-top:16px"></div>');
     $('#su').onchange = muatPantau;
+    if (P.pid) { $('#su').value = P.pid; P.pid = ''; muatPantau(); }
   });
 }
 function muatPantau() {
@@ -404,11 +456,12 @@ window.App = {
   konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: muatPantau,
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
   lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '.csv', P.lcsv); },
+  pantauId: function (id) { P.pid = id; tab('pantau'); },
   tmplSoal: function () { unduh('template-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci'], ['Matematika', 'Hasil dari 2 + 3 adalah ...', '4', '5', '6', '7', '', 'B']]); },
   tmplSiswa: function () { unduh('template-siswa.csv', [['NIS', 'Nama', 'Kelas'], ['202610101', 'Contoh Siswa', 'X MIPA 1']]); }
 };
 
 /* ---------- START ---------- */
 var s0 = Sesi.ambil();
-if (s0.token && s0.me) { S.me = s0.me; masuk(); } else viewLogin();
+if (s0.token && s0.me && (s0.me.role === 'siswa') === (MODE === 'siswa')) { S.me = s0.me; masuk(); } else { if (s0.token) Sesi.keluar(); viewLogin(); }
 })();
