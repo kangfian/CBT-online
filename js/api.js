@@ -15,8 +15,7 @@
       return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action: action, token: Sesi.ambil().token || '', data: data || {} }) })
         .then(function (r) { return r.json(); })
-        .then(function (j) { if (j && j.message === 'Aksi tidak dikenal.') j.message = 'Backend belum diperbarui: tempel Kode.gs terbaru, lalu Deploy → Kelola deployment → Versi baru.';
-        if (j && j.code === 'AUTH') { Sesi.keluar(); location.reload(); } return j; })
+        .then(function (j) { if (j && j.code === 'AUTH') { Sesi.keluar(); location.reload(); } return j; })
         .catch(function () { return { success: false, offline: true, message: 'Tidak dapat terhubung ke server.' }; });
     }
   };
