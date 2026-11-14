@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.6', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v2.7', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -161,7 +161,29 @@ function fsGate() { // dipakai bila ujian dimuat ulang/lanjut dan layar penuh be
 var TEMA = [['terang', 'Terang', '#1E3A5F', '#FFFFFF'], ['gelap', 'Gelap', '#0f1830', '#171f36'], ['hijau', 'Hijau', '#166534', '#f6fbf7'], ['ungu', 'Ungu', '#5B21B6', '#faf7ff']];
 function temaGet() { try { return localStorage.getItem('cbt_tema') || 'terang'; } catch (e) { return 'terang'; } }
 function temaSet(t) { try { localStorage.setItem('cbt_tema', t); } catch (e) {} var R = document.documentElement; if (R && R.setAttribute) R.setAttribute('data-theme', t); }
+function menuTutup() { var m = $('#um'); if (m) m.className = 'umenu hide'; }
+document.addEventListener('click', function (e) { if (!(e.target && e.target.closest && e.target.closest('.mewrap'))) menuTutup(); });
+function gantiPw() {
+  menuTutup(); var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card"><h2>Ganti Password</h2><p class="muted sm">Akun ' + esc(S.me.nama) + ' (' + (S.me.role === 'admin' ? 'Administrator' : 'Guru') + ')</p>' +
+    '<label class="field" style="margin-top:12px"><span>Password lama</span><input id="pl" type="password" autocomplete="current-password" required></label>' +
+    '<label class="field"><span>Password baru <small class="muted">(min. 8 karakter, huruf + angka)</small></span><input id="pb" type="password" autocomplete="new-password" required></label>' +
+    '<label class="field"><span>Ulangi password baru</span><input id="pu" type="password" autocomplete="new-password" required></label>' +
+    '<label class="sm" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pt" style="width:auto;min-height:0"> Tampilkan password</label><div class="err" id="e"></div>' +
+    '<div class="row"><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Batal</button><button class="btn p" id="sv">Simpan Password</button></div></form>';
+  document.body.appendChild(m); $('#pl').focus();
+  $('#pt').onchange = function () { var t = this.checked ? 'text' : 'password'; $('#pl').type = t; $('#pb').type = t; $('#pu').type = t; };
+  m.querySelector('form').onsubmit = function (ev) {
+    ev.preventDefault(); var e = $('#e'), b = $('#sv');
+    if ($('#pb').value !== $('#pu').value) { e.textContent = 'Ulangi password baru dengan benar.'; return; }
+    b.disabled = true; Api.call('akun.password', { lama: $('#pl').value, baru: $('#pb').value }).then(function (r) {
+      b.disabled = false; if (!r.success) { e.textContent = r.message; return; }
+      m.remove(); toast('Password berhasil diubah');
+    });
+  };
+}
 function tema() {
+  menuTutup();
   var o = $('#tm'); if (o) o.remove(); var m = document.createElement('div'); m.className = 'modal'; m.id = 'tm'; var cur = temaGet();
   m.innerHTML = '<div class="card"><h2>Pilih tema tampilan</h2><div class="grid g2" style="margin-top:14px;gap:12px">' + TEMA.map(function (t) {
     return '<button class="tema' + (cur === t[0] ? ' on' : '') + '" onclick="App.setTema(\'' + t[0] + '\')"><span class="sw" style="background:linear-gradient(135deg,' + t[2] + ' 50%,' + t[3] + ' 50%)"></span>' + t[1] + '</button>';
@@ -175,7 +197,7 @@ function rng(str) { var h = 1779033703 ^ str.length; for (var i = 0; i < str.len
 function kocok(arr, r) { var a = arr.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 
 function startExam(d) {
-  X = { id: d.idSesi, judul: d.judul, batas: d.batas, idx: 0, jawab: d.jawaban || {}, ragu: {}, unsent: {}, pel: d.pelanggaran || 0, aktif: true, n: 0 };
+  X = { id: d.idSesi, judul: d.judul, batas: d.batas, idx: 0, jawab: d.jawaban || {}, ragu: {}, unsent: {}, pel: d.pelanggaran || 0, aktif: true, n: 0, ks: d.kumpul || 0, mulaiSesi: d.mulaiSesi };
   X.soal = kocok(d.soal, rng(d.idSesi)).map(function (s) { s.ord = kocok(Object.keys(s.o), rng(d.idSesi + s.id)); return s; });
   var l = load('cbt_exam');
   if (l && l.id === X.id) { // pulihkan dari perangkat bila lebih baru
@@ -194,13 +216,20 @@ function startExam(d) {
 }
 function localSave() { save('cbt_exam', { id: X.id, jawab: X.jawab, ragu: X.ragu, idx: X.idx }); }
 function cur() { return X.soal[X.idx]; }
+function kbBuka() { return X.ks < 0 ? X.batas : X.ks > 0 ? Number(X.mulaiSesi) + X.ks * 60000 : 0; }
+function kbHtml() { // tombol Kumpulkan hanya di soal terakhir; admin dapat mengunci sampai waktu tertentu
+  if (X.idx < X.soal.length - 1) return '';
+  if (X.ks < 0) return '<span class="sm muted" style="flex-basis:100%;text-align:right">🔒 Ujian dikumpulkan otomatis saat waktu habis.</span>';
+  var sisa = kbBuka() - now();
+  return sisa > 0 ? '<button class="btn" id="kb" disabled>🔒 Kumpulkan (dibuka ' + mmss(sisa) + ')</button>' : '<button class="btn a" id="kb" onclick="App.konfirmasi()">Kumpulkan Ujian</button>';
+}
 function drawQ() {
   var s = cur(), j = X.jawab[s.id];
   $('#pos').textContent = 'Soal ' + (X.idx + 1) + ' dari ' + X.soal.length;
   $('#q').innerHTML = '<div class="qhead"><span class="qno">Nomor ' + (X.idx + 1) + '</span><span class="xs muted">Pilihan ganda tunggal</span></div><div class="qtext">' + esc(s.t) + '</div>' +
     s.ord.map(function (k, i) { return '<button class="opt' + (j === k ? ' on' : '') + '" onclick="App.pilih(\'' + k + '\')"><i>' + 'ABCDE'[i] + '</i><span>' + esc(s.o[k]) + '</span></button>'; }).join('') +
     '<div class="qfoot"><button class="btn" onclick="App.nav(-1)"' + (X.idx ? '' : ' disabled') + '>← Sebelumnya</button><button class="btn' + (X.ragu[s.id] ? ' a' : '') + '" onclick="App.ragu()">' + (X.ragu[s.id] ? '★ Ragu-ragu' : '☆ Ragu-ragu') + '</button><span class="sp"></span>' +
-    (X.idx < X.soal.length - 1 ? '<button class="btn p" onclick="App.nav(1)">Selanjutnya →</button>' : '') + '<button class="btn a" onclick="App.konfirmasi()">Kumpulkan Ujian</button></div>';
+    (X.idx < X.soal.length - 1 ? '<button class="btn p" onclick="App.nav(1)">Selanjutnya →</button>' : '') + kbHtml() + '</div>';
   drawNav();
 }
 function drawNav() {
@@ -211,7 +240,7 @@ function drawNav() {
   });
   var p = Math.round(n / X.soal.length * 100);
   $('#nv').innerHTML = '<h3>Navigasi Soal</h3><div class="grid g3" style="margin-top:12px;text-align:center;gap:8px"><div class="note" style="margin:0;padding:8px"><b>' + n + '</b><div class="xs muted">Dijawab</div></div><div class="note" style="margin:0;padding:8px"><b>' + r + '</b><div class="xs muted">Ragu</div></div><div class="note" style="margin:0;padding:8px"><b>' + (X.soal.length - n) + '</b><div class="xs muted">Belum</div></div></div>' +
-    '<div class="sm muted" style="display:flex;justify-content:space-between;margin-top:12px"><span>Kelengkapan</span><b>' + p + '%</b></div><div class="bar2"><i style="width:' + p + '%"></i></div><div class="nav">' + g + '</div>';
+    '<div class="sm muted" style="display:flex;justify-content:space-between;margin-top:12px"><span>Kelengkapan</span><b>' + p + '%</b></div><div class="bar2"><i style="width:' + p + '%"></i></div><div class="nav">' + g + '</div><p class="sm muted" style="margin-top:12px">' + (X.ks < 0 ? 'Ujian dikumpulkan otomatis saat waktu habis.' : 'Tombol <b>Kumpulkan</b> ada di soal terakhir.') + '</p>';
 }
 function pilih(k) { var s = cur(); X.jawab[s.id] = k; X.unsent[s.id] = k; localSave(); drawQ(); if (Object.keys(X.unsent).length >= 5) flush(); }
 function setSync(t, c) { var e = $('#sy'); if (e) { e.textContent = t; e.className = 'badge ' + (c === 'bad' ? 'b-bad' : c === 'wait' ? 'b-warn' : 'b-ok'); } }
@@ -220,7 +249,7 @@ function flush() {
   var snap = {}; ks.forEach(function (i) { snap[i] = X.unsent[i]; }); X.fl = true; setSync('Menyimpan...', 'wait');
   return Api.call('jawaban.simpan', { idSesi: X.id, jawaban: snap }).then(function (r) {
     X.fl = false;
-    if (r.success) { ks.forEach(function (i) { if (X.unsent[i] === snap[i]) delete X.unsent[i]; }); setSync('Tersimpan', 'ok'); if (r.data && r.data.nilai !== undefined) tamat(r.data); return true; }
+    if (r.success) { ks.forEach(function (i) { if (X.unsent[i] === snap[i]) delete X.unsent[i]; }); setSync('Tersimpan', 'ok'); if (r.data && r.data.nilai !== undefined) { tamat(r.data); return true; } if (X && r.data && r.data.kumpul !== undefined && r.data.kumpul !== X.ks) { X.ks = r.data.kumpul; drawQ(); } return true; }
     if (r.code === 'SELESAI') { kumpul(true); return true; }
     setSync(r.offline ? 'Offline — aman di perangkat' : 'Gagal menyimpan', 'bad'); return false;
   });
@@ -229,6 +258,7 @@ function tick() {
   if (!X || !X.aktif) return;
   var sisa = X.batas - now(), e = $('#tm'); if (!e) return;
   if (sisa <= 0) { e.textContent = '00:00'; kumpul(true); return; }
+  var kb = $('#kb'); if (kb && X.ks > 0 && kb.disabled) { var s2 = kbBuka() - now(); if (s2 <= 0) drawQ(); else kb.textContent = '🔒 Kumpulkan (dibuka ' + mmss(s2) + ')'; }
   e.textContent = mmss(sisa); e.className = 'timer' + (sisa < 120000 ? ' bad' : sisa < 600000 ? ' warn' : '');
   if (++X.n % 15 === 0) flush();
 }
@@ -253,6 +283,7 @@ function banner() {
   b.innerHTML = X.pel ? '<div class="banner"><div style="font-size:22px">⚠</div><div style="flex:1"><b>PERINGATAN INTEGRITAS ' + Math.min(X.pel, 3) + ' DARI 3</b><br>Terdeteksi perpindahan tab atau jendela kehilangan fokus. Jawaban tetap tersimpan, namun ujian dikumpulkan otomatis pada pelanggaran ke-3.</div><button class="btn sm" onclick="this.parentNode.remove()">Tutup</button></div>' : '';
 }
 function konfirmasi() {
+  if (X.ks < 0 || (X.ks > 0 && kbBuka() > now())) { toast('Tombol kumpulkan belum dibuka.', 'warn'); return; }
   var n = Object.keys(X.jawab).length, m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
   m.innerHTML = '<div class="card"><h2>Kumpulkan ujian?</h2><p class="muted">Anda menjawab <b>' + n + '</b> dari <b>' + X.soal.length + '</b> soal' + (n < X.soal.length ? ' — masih ada <b>' + (X.soal.length - n) + '</b> yang belum dijawab' : '') + '. Setelah dikumpulkan, jawaban tidak dapat diubah.</p>' +
     '<div class="row"><button class="btn" onclick="document.getElementById(\'md\').remove()">Periksa Lagi</button><button class="btn a" id="ky" onclick="App.kumpul()">Ya, Kumpulkan</button></div></div>';
@@ -264,6 +295,7 @@ function kumpul(auto) {
   Api.call('ujian.kumpul', { idSesi: X.id, jawaban: X.jawab }).then(function (r) {
     if (r.success) { tamat(r.data); return; }
     X.kirim = false; if (b) { b.disabled = false; b.textContent = 'Ya, Kumpulkan'; }
+    if (r.code === 'TERKUNCI') { if (r.data) X.ks = r.data.ks; var md0 = $('#md'); if (md0) md0.remove(); drawQ(); toast(r.message, 'error'); if (auto) setTimeout(function () { kumpul(true); }, 2000); return; }
     toast(r.offline ? 'Belum tersambung. Jawaban aman di perangkat; mencoba lagi...' : r.message, 'error');
     if (auto || r.offline) setTimeout(function () { kumpul(true); }, 4000);
   });
@@ -290,7 +322,7 @@ function panel() {
   var adm = S.me.role === 'admin', T = [['dash', 'Dashboard'], ['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
   render('<div class="shell"><nav class="side"><div class="brand">CBT Online<div class="xs" style="color:#adc8f5">' + (adm ? 'Admin' : 'Guru') + '</div></div>' +
     T.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" onclick="App.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') +
-    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.tema()">🎨 Tema</button><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
+    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()">🎨 Tema tampilan</button><button onclick="App.ganti()">🔑 Ganti Password</button><button onclick="App.keluar()">⎋ Keluar</button></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
@@ -343,7 +375,7 @@ function drawAdmDash() {
 }
 function pStat(x) { return x.status === 'belum' ? 'belum' : x.status === 'berlangsung' ? 'mengerjakan' : 'selesai'; }
 function tPantau() {
-  clearInterval(P.iv); pc('<h1>Pantau Ujian</h1><div class="sk" style="margin-top:16px;min-height:160px"></div>');
+  clearInterval(P.iv); P.kcFor = ''; pc('<h1>Pantau Ujian</h1><div class="sk" style="margin-top:16px;min-height:160px"></div>');
   Api.call('ujian.guru').then(function (r) {
     if (P.tab !== 'pantau') return;
     if (!r.success) return pc('<h1>Pantau Ujian</h1><p class="err">' + esc(r.message) + '</p>');
@@ -378,11 +410,16 @@ function drawPantau() {
   $('#pk').innerHTML = '<div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:240px"><span class="badge ' + st[0] + '">' + st[1] + '</span><h2 style="margin:6px 0 2px">' + esc(d.judul) + '</h2>' +
     '<div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal<br>' + fmt(d.mulai) + ' – ' + fmt(d.selesai) + '</div></div>' +
     '<div style="text-align:center"><div class="xs muted">Token ujian</div><div class="mono" style="font-size:28px;font-weight:700;letter-spacing:.25em">' + esc(d.token) + '</div><button class="btn sm" onclick="App.salinToken()">Salin token</button></div>' +
-    '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div>' +
+    '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div><div id="pkc"></div>' +
     '<div class="grid g4" style="margin-top:12px">' + kp('Total peserta', tot, '#1E3A5F', c.belum + ' belum mulai') + kp('Sedang mengerjakan', c.mengerjakan, '#3B82F6', 'saat ini') + kp('Sudah selesai', c.selesai, '#16A34A', Math.round(pct(c.selesai)) + '% peserta') + kp('Ada pelanggaran', c.pel, '#DC2626', 'siswa pindah tab') + '</div>' +
     '<div class="prog" style="margin-top:12px;height:10px"><i style="width:' + pct(c.selesai) + '%;background:var(--ok)"></i><i style="width:' + pct(c.mengerjakan) + '%;background:#3B82F6"></i></div>' +
     '<div class="sm muted" style="display:flex;justify-content:space-between"><span>🟩 selesai · 🟦 mengerjakan · ⬜ belum mulai</span><span>Diperbarui ' + new Date(P.pt).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</span></div>';
   $('#pch').innerHTML = [['semua', 'Semua', tot], ['belum', 'Belum mulai', c.belum], ['mengerjakan', 'Mengerjakan', c.mengerjakan], ['selesai', 'Selesai', c.selesai], ['pel', 'Pelanggaran', c.pel]].map(function (t) { return '<button class="chip' + (P.pf === t[0] ? ' on' : '') + '" onclick="App.pf(\'' + t[0] + '\')">' + t[1] + ' (' + t[2] + ')</button>'; }).join('');
+  if (P.kcFor !== P.cur) {
+    P.kcFor = P.cur; var kc = d.kumpul, km = kc < 0 ? '-1' : kc > 0 ? 'n' : '0';
+    $('#pkc').innerHTML = '<div class="card" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><b>🔒 Tombol Kumpulkan siswa:</b><select id="pks" onchange="App.pks()" style="max-width:360px"><option value="0"' + (km === '0' ? ' selected' : '') + '>Boleh dikumpulkan kapan saja</option><option value="n"' + (km === 'n' ? ' selected' : '') + '>Terkunci N menit pertama</option><option value="-1"' + (km === '-1' ? ' selected' : '') + '>Tidak ada tombol — otomatis saat waktu habis</option></select>' +
+      '<input id="pkn" type="number" min="1" max="' + d.durasi + '" value="' + (kc > 0 ? kc : '') + '" placeholder="menit" style="width:100px" class="' + (km === 'n' ? '' : 'hide') + '"><button class="btn p sm" onclick="App.kumpulAtur()">Simpan</button><span class="sm muted">Durasi ujian ' + d.durasi + ' menit. Berlaku juga untuk siswa yang sedang mengerjakan.</span></div>';
+  } else if (!$('#pkc').innerHTML) P.kcFor = '';
   drawTabel();
 }
 function drawTabel() {
@@ -413,15 +450,17 @@ function tBuat() {
       '<label class="field"><span>Mata pelajaran *</span><select name="mapel" id="fm" required><option value="">— pilih mata pelajaran —</option>' + M.map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('') + '</select>' + (M.length ? '' : '<span class="err">Bank soal masih kosong. Import soal dulu.</span>') + '</label></div>' +
       '<div class="field"><span>Kelas peserta * <small class="muted">(klik untuk memilih, dari data siswa)</small></span><div style="display:flex;flex-wrap:wrap;gap:8px">' + (KL.length ? KL.map(function (k) { return '<button type="button" class="chip" data-k="' + esc(k) + '" onclick="App.kls(this)">' + esc(k) + '</button>'; }).join('') : '<span class="err">Belum ada data siswa. Import siswa dulu.</span>') + '</div></div>' +
       '<div class="grid g3"><label class="field"><span>Durasi (menit) *</span><input name="durasi" type="number" min="1" value="90" required></label><label class="field"><span>Ujian dapat dimulai *</span><input name="mulai" type="datetime-local" value="' + loc(d0) + '" required></label><label class="field"><span>Ditutup pada *</span><input name="selesai" type="datetime-local" value="' + loc(new Date(d0.getTime() + 864e5)) + '" required></label></div>' +
+      '<div class="field"><span>Pengumpulan jawaban oleh siswa</span><div class="grid g2" style="gap:10px"><select id="km"><option value="0">Boleh dikumpulkan kapan saja (tombol ada di soal terakhir)</option><option value="n">Kunci tombol kumpulkan selama N menit pertama</option><option value="-1">Tidak ada tombol — otomatis saat waktu habis</option></select><input id="kn" type="number" min="1" placeholder="N menit" class="hide"></div></div>' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px"><h3>Pilih soal <span class="badge b-info" id="cs">0 dipilih</span></h3><span style="flex:1"></span><button type="button" class="btn sm" onclick="App.pilSemua()">Pilih semua yang tampil</button><button type="button" class="btn sm" onclick="App.pilKosong()">Kosongkan</button></div>' +
       '<input id="fs" placeholder="Cari isi soal..." style="margin-bottom:10px"><div id="ls" style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px"></div>' +
       '<div class="err" id="e"></div><button class="btn p" style="margin-top:14px">Buat &amp; Aktifkan Ujian</button></form><div id="hs"></div>');
-    drawSoalPilih(); $('#fs').oninput = drawSoalPilih; $('#fm').onchange = function () { P.sel = {}; drawSoalPilih(); };
+    drawSoalPilih(); $('#fs').oninput = drawSoalPilih; $('#fm').onchange = function () { P.sel = {}; drawSoalPilih(); }; $('#km').onchange = function () { $('#kn').className = this.value === 'n' ? '' : 'hide'; };
     $('#fb').onsubmit = function (ev) {
       ev.preventDefault(); var f = ev.target, ids = Object.keys(P.sel), kl = Object.keys(P.kls), bt = $('button.p', f), e = $('#e');
       if (!kl.length) { e.textContent = 'Pilih minimal satu kelas.'; return; } if (!ids.length) { e.textContent = 'Pilih minimal satu soal.'; return; }
+      var km = $('#km').value, kv = km === 'n' ? Number($('#kn').value) : Number(km); if (km === 'n' && !(kv > 0)) { e.textContent = 'Isi jumlah menit penguncian tombol kumpulkan.'; return; }
       bt.disabled = true;
-      Api.call('ujian.buat', { judul: f.judul.value, mapel: f.mapel.value, kelas: kl.join(', '), durasi: f.durasi.value, mulai: new Date(f.mulai.value).getTime(), selesai: new Date(f.selesai.value).getTime(), soal: ids }).then(function (r) {
+      Api.call('ujian.buat', { kumpul: kv, judul: f.judul.value, mapel: f.mapel.value, kelas: kl.join(', '), durasi: f.durasi.value, mulai: new Date(f.mulai.value).getTime(), selesai: new Date(f.selesai.value).getTime(), soal: ids }).then(function (r) {
         bt.disabled = false; if (!r.success) { e.textContent = r.message; return; }
         e.textContent = ''; toast('Ujian dibuat'); $('#hs').innerHTML = '<div class="note" style="text-align:center"><div class="xs muted">Token ujian — bagikan ke siswa saat ujian</div><div class="token mono" style="font-size:36px;font-weight:700;letter-spacing:.3em">' + esc(r.data.token) + '</div><button type="button" class="btn p" onclick="App.tab(\'pantau\')">Buka Pantau Ujian</button></div>';
       });
@@ -656,43 +695,145 @@ function pwSiswa(nis) {
   };
 }
 function tGuru() {
-  pc('<h1>Kelola Guru</h1><form class="card" id="fg" style="margin-top:16px;max-width:520px"><h3>Tambah akun guru</h3><label class="field"><span>Nama lengkap</span><input name="nama" required></label><label class="field"><span>Username (huruf kecil/angka)</span><input name="username" required></label><div class="err" id="e"></div><button class="btn p">Buat akun</button><div id="rs"></div></form>');
-  $('#fg').onsubmit = function (ev) { ev.preventDefault(); var f = ev.target;
-    Api.call('guru.tambah', { nama: f.nama.value, username: f.username.value }).then(function (r) { if (!r.success) { $('#e').textContent = r.message; return; } $('#e').textContent = ''; f.reset();
-      $('#rs').innerHTML = '<div class="note w"><b>Catat sekarang — password hanya tampil sekali:</b><br>Username: <b class="mono">' + esc(r.data.username) + '</b><br>Password: <b class="mono">' + esc(r.data.password) + '</b></div>'; }); };
+  pc('<h1>Kelola Guru</h1><div class="sk" style="margin-top:16px;min-height:200px"></div>'); P.gq = ''; muatGuru(true);
 }
-
-function tLaporan() {
-  pc('<h1>Laporan</h1><div class="sk" style="margin-top:16px"></div>');
-  Api.call('ujian.guru').then(function (r) {
-    if (!r.success) return pc('<p class="err">' + esc(r.message) + '</p>');
-    pc('<h1>Laporan</h1><div class="card" style="margin-top:16px"><select id="lu"><option value="">— pilih ujian —</option>' + r.data.map(function (u) { return '<option value="' + u.id + '">' + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select></div><div id="lp" style="margin-top:16px"></div>');
-    $('#lu').onchange = function () {
-      var id = this.value; if (!id) return; $('#lp').innerHTML = '<div class="sk"></div>'; busy(true); P.lk = '';
-      Api.call('laporan.ujian', { idUjian: id }).then(function (r) { busy(false); if (!r.success) { $('#lp').innerHTML = '<p class="err">' + esc(r.message) + '</p>'; return; } P.lap = r.data; drawLap(); });
-    };
+function muatGuru(awal) {
+  Api.call('guru.list').then(function (r) {
+    if (P.tab !== 'guru') return; if (!r.success) return pc('<h1>Kelola Guru</h1><p class="err">' + esc(r.message) + '</p>');
+    P.gr = r.data;
+    if (awal || !$('#gtb')) {
+      pc('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Kelola Guru</h1><div class="muted sm">Akun guru, status aktif, dan password</div></div><button class="btn p" onclick="App.gf(\'\')">+ Tambah guru</button></div>' +
+        '<div class="grid g4" id="gk" style="margin-top:16px"></div><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input id="gq" placeholder="Cari nama / username..." style="max-width:280px"><span class="sm muted" id="gin" style="flex:1;text-align:right"></span></div><div class="tw" id="gtb" style="margin-top:12px"></div></div>');
+      $('#gq').oninput = function () { P.gq = this.value; drawGuru(); };
+    }
+    drawGuru();
   });
 }
+function drawGuru() {
+  var L = P.gr, q = (P.gq || '').toLowerCase(), ak = L.filter(function (x) { return x.status === 'aktif'; }).length, tu = L.reduce(function (s, x) { return s + x.ujian; }, 0);
+  var kp = function (t, v, s, c) { return '<div class="card stat" style="border-left:4px solid ' + c + '"><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div>'; };
+  $('#gk').innerHTML = kp('Total guru', L.length, 'akun terdaftar', '#1E3A5F') + kp('Aktif', ak, 'dapat login', '#16A34A') + kp('Nonaktif', L.length - ak, 'akses ditutup', '#6B7280') + kp('Ujian dibuat', tu, 'oleh seluruh guru', '#3B82F6');
+  var F = L.filter(function (x) { return !q || (x.nama + ' ' + x.username).toLowerCase().indexOf(q) >= 0; });
+  $('#gin').textContent = F.length + ' guru';
+  $('#gtb').innerHTML = !L.length ? '<div style="text-align:center;padding:30px"><h2>Belum ada guru</h2><p class="muted">Tambahkan akun guru agar bisa membuat soal dan ujian.</p><button class="btn p" onclick="App.gf(\'\')">+ Tambah guru</button></div>' :
+    F.length ? '<table><thead><tr><th>Guru</th><th>Username</th><th>Status</th><th>Soal</th><th>Ujian</th><th></th></tr></thead><tbody>' + F.map(function (x) {
+      return '<tr><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><b>' + esc(x.nama) + '</b></div></td><td class="mono">' + esc(x.username) + '</td><td><span class="badge ' + (x.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(x.status) + '</span></td><td>' + x.soal + '</td><td>' + x.ujian + '</td>' +
+        '<td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.gf(\'' + x.id + '\')">Edit</button> <button class="btn sm" onclick="App.gpw(\'' + x.id + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.ghapus(\'' + x.id + '\')">Hapus</button></td></tr>';
+    }).join('') + '</tbody></table>' : '<p class="muted" style="padding:16px;text-align:center">Tidak ada guru yang cocok.</p>';
+}
+function guruForm(id) {
+  var g = id ? P.gr.filter(function (x) { return x.id === id; })[0] : null; if (id && !g) return;
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card"><h2>' + (g ? 'Edit guru' : 'Tambah guru') + '</h2><div style="margin-top:12px"><label class="field"><span>Nama lengkap *</span><input id="gn" value="' + esc(g ? g.nama : '') + '" required></label>' +
+    '<label class="field"><span>Username *' + (g ? '' : ' <small class="muted">(huruf kecil/angka, 3–30)</small>') + '</span><input id="gu" value="' + esc(g ? g.username : '') + '"' + (g ? ' disabled' : '') + ' required></label>' +
+    (g ? '<label class="field"><span>Status</span><select id="gs"><option value="aktif">Aktif</option><option value="nonaktif">Nonaktif (langsung tidak bisa masuk)</option></select></label>' : '<label class="field"><span>Password <small class="muted">(kosongkan = dibuat acak; min. 8, huruf + angka)</small></span><input id="gp" autocomplete="off"></label>') +
+    '</div><div class="err" id="e"></div><div id="hs"></div><div class="row"><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button><button class="btn p" id="sv">Simpan</button></div></form>';
+  document.body.appendChild(m); if (g) $('#gs').value = g.status; $('#gn').focus();
+  m.querySelector('form').onsubmit = function (ev) {
+    ev.preventDefault(); var b = $('#sv'); b.disabled = true;
+    var req = g ? Api.call('guru.simpan', { id: g.id, nama: $('#gn').value, status: $('#gs').value }) : Api.call('guru.tambah', { nama: $('#gn').value, username: $('#gu').value, password: $('#gp').value });
+    req.then(function (r) {
+      if (!r.success) { b.disabled = false; $('#e').textContent = r.message; return; }
+      toast('Data guru disimpan'); muatGuru();
+      if (g) m.remove(); else $('#hs').innerHTML = '<div class="note w"><b>Catat sekarang — password hanya tampil sekali:</b><br>Username: <b class="mono">' + esc(r.data.username) + '</b><br>Password: <b class="mono" style="font-size:18px">' + esc(r.data.password) + '</b></div>';
+    });
+  };
+}
+function guruPw(id) {
+  var g = P.gr.filter(function (x) { return x.id === id; })[0]; if (!g) return;
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card"><h2>Ubah password guru</h2><p class="muted">' + esc(g.nama) + ' · ' + esc(g.username) + '</p><label class="field" style="margin-top:12px"><span>Password baru <small class="muted">(kosongkan = acak; min. 8, huruf + angka)</small></span><input id="np" autocomplete="off"></label><div class="err" id="e"></div><div id="hs"></div>' +
+    '<div class="row"><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button><button class="btn p" id="sv">Simpan</button></div></form>';
+  document.body.appendChild(m); $('#np').focus();
+  m.querySelector('form').onsubmit = function (ev) {
+    ev.preventDefault(); var b = $('#sv'); b.disabled = true;
+    Api.call('guru.password', { id: g.id, password: $('#np').value.trim() }).then(function (r) {
+      b.disabled = false; if (!r.success) { $('#e').textContent = r.message; return; }
+      $('#e').textContent = ''; $('#np').value = ''; toast('Password diubah');
+      $('#hs').innerHTML = '<div class="note w"><b>Password baru (catat sekarang, hanya tampil sekali):</b><br><span class="mono" style="font-size:20px;letter-spacing:.06em">' + esc(r.data.password) + '</span></div>';
+    });
+  };
+}
+function guruHapus(id) {
+  var g = P.gr.filter(function (x) { return x.id === id; })[0]; if (!g) return;
+  dlg('Hapus guru?', '<p><b>' + esc(g.nama) + '</b> · ' + esc(g.username) + '</p><p class="muted">Akun dihapus permanen. Guru yang masih memiliki soal atau ujian tidak dapat dihapus; gunakan <b>Edit → Nonaktif</b> untuk menutup aksesnya.</p>', 'Ya, Hapus', function (close, btn) {
+    Api.call('guru.hapus', { id: id }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Guru dihapus'); muatGuru(); });
+  }, true);
+}
+function histSvg(h) {
+  var mx = Math.max.apply(null, h.concat([1])), lab = ['< 60', '60–69', '70–79', '80–89', '90–100'], col = ['#EF4444', '#F59E0B', '#EAB308', '#3B82F6', '#16A34A'];
+  return '<svg viewBox="0 0 400 200" style="width:100%;height:auto" role="img" aria-label="Distribusi nilai">' + h.map(function (v, i) {
+    var hh = Math.round(v / mx * 130), x = 20 + i * 76;
+    return '<rect x="' + x + '" y="' + (150 - hh) + '" width="56" height="' + hh + '" rx="6" fill="' + col[i] + '"/><text x="' + (x + 28) + '" y="' + (144 - hh) + '" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--text)">' + v + '</text><text x="' + (x + 28) + '" y="174" text-anchor="middle" font-size="12" style="fill:var(--muted)">' + lab[i] + '</text>';
+  }).join('') + '<line x1="10" y1="150" x2="390" y2="150" style="stroke:var(--line)"/></svg>';
+}
+function tLaporan() {
+  pc('<h1>Laporan</h1><div class="sk" style="margin-top:16px;min-height:160px"></div>');
+  Api.call('ujian.guru').then(function (r) {
+    if (P.tab !== 'laporan') return; if (!r.success) return pc('<h1>Laporan</h1><p class="err">' + esc(r.message) + '</p>');
+    if (!r.data.length) return pc('<h1>Laporan</h1><div class="card" style="margin-top:16px;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Laporan muncul setelah ujian dibuat dan dikerjakan.</p></div>');
+    var n = Date.now(), kkm = Number(load('cbt_kkm')) || 75; P.kkm = kkm; P.lk = ''; P.lq = ''; P.lap = null; P.lsub = P.lsub || 'rekap';
+    pc('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Laporan</h1><div class="muted sm">Rekap nilai, analisis soal, dan pelanggaran</div></div>' +
+      '<label class="sm" style="display:flex;gap:8px;align-items:center">KKM <input id="kkm" type="number" min="0" max="100" value="' + kkm + '" style="width:80px"></label>' +
+      '<select id="lu" style="max-width:400px"><option value="">— pilih ujian —</option>' + r.data.map(function (u) { var b = n >= u.mulai && n <= u.selesai ? '● ' : n < u.mulai ? '◷ ' : '✓ '; return '<option value="' + u.id + '">' + b + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select></div>' +
+      '<div id="lp" style="margin-top:16px"><div class="card muted" style="text-align:center;padding:36px">Pilih ujian untuk melihat laporan.</div></div>');
+    $('#lu').onchange = function () {
+      var id = this.value; if (!id) return; $('#lp').innerHTML = '<div class="sk" style="min-height:200px"></div>'; busy(true);
+      Api.call('laporan.ujian', { idUjian: id }).then(function (r) { busy(false); if (P.tab !== 'laporan') return; if (!r.success) { $('#lp').innerHTML = '<p class="err">' + esc(r.message) + '</p>'; return; } P.lap = r.data; P.lk = ''; P.lq = ''; drawLap(); });
+    };
+    $('#kkm').oninput = function () { P.kkm = Math.max(0, Math.min(100, Number(this.value) || 0)); save('cbt_kkm', P.kkm); if (P.lap) drawLap(); };
+    $('#lu').value = r.data[0].id; $('#lu').onchange.call($('#lu'));
+  });
+}
+var STL = { belum: 'Belum mulai', berlangsung: 'Mengerjakan', dikumpulkan: 'Selesai', 'dikumpulkan-otomatis': 'Otomatis' };
+function lapRekap() {
+  var d = P.lap, kkm = P.kkm, done = d.rekap.filter(function (x) { return x.nilai != null; }), rk = {};
+  done.slice().sort(function (a, b) { return b.nilai - a.nilai; }).forEach(function (x, i, arr) { rk[x.nis] = i && x.nilai === arr[i - 1].nilai ? rk[arr[i - 1].nis] : i + 1; });
+  var q = (P.lq || '').toLowerCase(), L = d.rekap.filter(function (x) { return (!P.lk || x.kelas === P.lk) && (!q || (x.nis + ' ' + x.nama).toLowerCase().indexOf(q) >= 0); });
+  L = L.slice().sort(function (a, b) { return (b.nilai == null ? -1 : b.nilai) - (a.nilai == null ? -1 : a.nilai) || a.nama.localeCompare(b.nama); });
+  P.lcsv = [['Peringkat', 'Kelas', 'NIS', 'Nama', 'Status', 'Nilai', 'Keterangan', 'Pelanggaran', 'Durasi']].concat(L.map(function (x) { return [rk[x.nis] || '', x.kelas, x.nis, x.nama, STL[x.status] || x.status, x.nilai == null ? '' : x.nilai, x.nilai == null ? '' : (x.nilai >= kkm ? 'Tuntas' : 'Belum tuntas'), x.pel, x.durasi == null ? '' : mmss(x.durasi)]; }));
+  return L.length ? '<table><thead><tr><th>#</th><th>Siswa</th><th>Kelas</th><th>Status</th><th>Nilai</th><th>Keterangan</th><th>Pelanggaran</th><th>Durasi</th></tr></thead><tbody>' + L.map(function (x) {
+    return '<tr><td><b>' + (rk[x.nis] || '—') + '</b></td><td><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></td><td>' + esc(x.kelas) + '</td><td><span class="badge ' + (x.status === 'belum' ? 'b-mut' : x.status === 'berlangsung' ? 'b-info' : x.status === 'dikumpulkan' ? 'b-ok' : 'b-warn') + '">' + esc(STL[x.status] || x.status) + '</span></td>' +
+      '<td>' + (x.nilai == null ? '—' : '<span class="badge ' + (x.nilai >= kkm ? 'b-ok' : 'b-bad') + '" style="font-size:14px">' + esc(x.nilai) + '</span>') + '</td><td>' + (x.nilai == null ? '—' : x.nilai >= kkm ? 'Tuntas' : 'Belum tuntas') + '</td><td>' + (x.pel ? '<span class="badge ' + (x.pel >= 3 ? 'b-bad' : 'b-warn') + '">' + x.pel + 'x</span>' : '0') + '</td><td>' + (x.durasi == null ? '—' : mmss(x.durasi)) + '</td></tr>';
+  }).join('') + '</tbody></table>' : '<p class="muted" style="padding:16px;text-align:center">Tidak ada data pada filter ini.</p>';
+}
+function drawLapTabel() { var e = $('#lt'); if (e) e.innerHTML = lapRekap(); }
 function drawLap() {
-  var d = P.lap, s = P.lsub || 'rekap', H, R, top = '';
+  var d = P.lap, s = P.lsub || 'rekap', kkm = P.kkm, done = d.rekap.filter(function (x) { return x.nilai != null; }), v = done.map(function (x) { return x.nilai; });
+  var avg = v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : null, f1 = function (x) { return x == null ? '—' : String(Math.round(x * 10) / 10); }, lulus = v.filter(function (x) { return x >= kkm; }).length;
+  var kp = function (t, val, sub, c) { return '<div class="card stat" style="border-left:4px solid ' + c + '"><span class="xs muted">' + t + '</span><b>' + val + '</b><span class="sm muted">' + sub + '</span></div>'; };
+  var KP = '<div class="grid g4">' + kp('Peserta', d.rekap.length, done.length + ' sudah mengumpulkan', '#1E3A5F') + kp('Rata-rata nilai', f1(avg), 'tertinggi ' + f1(v.length ? Math.max.apply(null, v) : null) + ' · terendah ' + f1(v.length ? Math.min.apply(null, v) : null), '#3B82F6') +
+    kp('Tuntas (KKM ' + kkm + ')', lulus + ' / ' + done.length, done.length ? Math.round(lulus / done.length * 100) + '% tuntas' : 'belum ada nilai', '#16A34A') + kp('Pelanggaran', d.log.length, 'kejadian tercatat', '#DC2626') + '</div>';
+  var tabs = [['rekap', 'Rekap Nilai'], ['analisis', 'Analisis Soal'], ['log', 'Log Pelanggaran']].map(function (t) { return '<button class="chip' + (s === t[0] ? ' on' : '') + '" onclick="App.lsub(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
+  var body = '';
   if (s === 'rekap') {
-    var kl = {}; d.rekap.forEach(function (x) { kl[x.kelas] = 1; });
-    var rows = d.rekap.filter(function (x) { return !P.lk || x.kelas === P.lk; }), n = rows.filter(function (x) { return x.nilai != null; }).map(function (x) { return x.nilai; });
-    H = ['Kelas', 'NIS', 'Nama', 'Status', 'Nilai', 'Pindah tab', 'Durasi'];
-    R = rows.map(function (x) { return [x.kelas, x.nis, x.nama, x.status, x.nilai == null ? '' : x.nilai, x.pel, x.durasi == null ? '' : mmss(x.durasi)]; });
-    top = '<div class="grid g4" style="margin-bottom:12px"><div class="card stat"><span class="xs muted">Rata-rata</span><b>' + (n.length ? Math.round(n.reduce(function (a, b) { return a + b; }, 0) / n.length * 10) / 10 : '—') + '</b></div><div class="card stat"><span class="xs muted">Tertinggi</span><b>' + (n.length ? Math.max.apply(null, n) : '—') + '</b></div><div class="card stat"><span class="xs muted">Terendah</span><b>' + (n.length ? Math.min.apply(null, n) : '—') + '</b></div><div class="card stat"><span class="xs muted">Sudah mengumpulkan</span><b>' + n.length + ' / ' + rows.length + '</b></div></div>' +
-      '<select onchange="App.lkelas(this.value)" style="max-width:220px;margin-bottom:12px"><option value="">Semua kelas</option>' + Object.keys(kl).map(function (k) { return '<option' + (P.lk === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select>';
+    var h = [0, 0, 0, 0, 0], kl = {}, per = {}; v.forEach(function (x) { h[x < 60 ? 0 : x < 70 ? 1 : x < 80 ? 2 : x < 90 ? 3 : 4]++; }); d.rekap.forEach(function (x) { kl[x.kelas] = 1; }); done.forEach(function (x) { (per[x.kelas] = per[x.kelas] || []).push(x.nilai); });
+    var pk = Object.keys(per).sort().map(function (k) { var a = per[k].reduce(function (p, c) { return p + c; }, 0) / per[k].length; return '<div style="margin:10px 0"><div style="display:flex;justify-content:space-between" class="sm"><b>' + esc(k) + '</b><span>' + f1(a) + ' <span class="muted">(' + per[k].length + ' siswa)</span></span></div><div class="prog"><i style="width:' + a + '%;background:' + (a >= kkm ? 'var(--ok)' : '#EF4444') + '"></i></div></div>'; }).join('') || '<p class="muted sm">Belum ada nilai.</p>';
+    body = '<div class="grid g23" style="margin-top:16px"><div class="card"><h3>Distribusi nilai</h3>' + (v.length ? histSvg(h) : '<p class="muted sm">Belum ada siswa yang mengumpulkan.</p>') + '</div><div class="card"><h3>Rata-rata per kelas</h3>' + pk + '</div></div>' +
+      '<div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><select onchange="App.lkelas(this.value)" style="max-width:200px"><option value="">Semua kelas</option>' + Object.keys(kl).sort().map(function (k) { return '<option' + (P.lk === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select>' +
+      '<input id="lq" placeholder="Cari nama / NIS..." value="' + esc(P.lq || '') + '" style="max-width:220px"><span style="flex:1"></span><span class="sm muted">Nilai di bawah KKM ' + kkm + ' ditandai merah</span></div><div class="tw" id="lt" style="margin-top:12px"></div></div>';
   } else if (s === 'analisis') {
-    H = ['No', 'Soal', 'Kunci', '% benar', 'Sebaran jawaban'];
-    R = d.analisis.map(function (a, i) { return [i + 1, a.t, a.kunci, a.benar + '%', Object.keys(a.dist).sort().map(function (l) { return l + ':' + a.dist[l]; }).join('  ') || '-']; });
+    var A = d.analisis, lv = { sulit: 0, sedang: 0, mudah: 0 }, lvl = function (a) { return a.benar < 30 ? 'sulit' : a.benar <= 70 ? 'sedang' : 'mudah'; }; A.forEach(function (a) { lv[lvl(a)]++; });
+    var BC = { sulit: ['b-bad', '#EF4444', 'Sulit'], sedang: ['b-warn', '#EAB308', 'Sedang'], mudah: ['b-ok', '#16A34A', 'Mudah'] };
+    P.lcsv = [['No', 'Soal', 'Kunci', 'Tingkat', '% Benar', 'Sebaran']].concat(A.map(function (a, i) { return [i + 1, a.t, a.kunci, BC[lvl(a)][2], a.benar + '%', Object.keys(a.dist).sort().map(function (l) { return l + ':' + a.dist[l]; }).join(' ')]; }));
+    body = '<div class="grid g3" style="margin-top:16px">' + kp('Soal mudah', lv.mudah, 'dijawab benar > 70%', '#16A34A') + kp('Soal sedang', lv.sedang, '30% – 70% benar', '#EAB308') + kp('Soal sulit', lv.sulit, 'dijawab benar < 30%', '#EF4444') + '</div>' +
+      '<div class="card" style="margin-top:16px"><div class="muted sm" style="margin-bottom:8px">Dihitung dari ' + done.length + ' siswa yang sudah mengumpulkan. Soal yang tidak dijawab dihitung salah.</div><div class="tw">' + (A.length ? '<table><thead><tr><th>No</th><th>Soal</th><th>Kunci</th><th>Tingkat</th><th style="min-width:160px">% Benar</th><th>Sebaran jawaban</th></tr></thead><tbody>' + A.map(function (a, i) {
+        var b = BC[lvl(a)]; return '<tr><td>' + (i + 1) + '</td><td><div class="clamp" style="max-width:380px">' + esc(a.t) + '</div></td><td><b>' + esc(a.kunci) + '</b></td><td><span class="badge ' + b[0] + '">' + b[2] + '</span></td><td><b>' + a.benar + '%</b><div class="prog"><i style="width:' + a.benar + '%;background:' + b[1] + '"></i></div></td>' +
+          '<td>' + (Object.keys(a.dist).sort().map(function (l) { return '<span class="badge ' + (l === a.kunci ? 'b-ok' : 'b-mut') + '" style="margin:1px">' + l + ' · ' + a.dist[l] + '</span>'; }).join(' ') || '<span class="muted">—</span>') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<p class="muted">Belum ada soal.</p>') + '</div></div>';
   } else {
-    H = ['Waktu', 'NIS', 'Nama', 'Jenis']; R = d.log.map(function (l) { return [fmt(l.waktu), l.nis, l.nama, l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab']; });
+    var gs = {}; d.log.forEach(function (l) { var g = gs[l.nis] = gs[l.nis] || { nama: l.nama, nis: l.nis, tab: 0, fs: 0, last: 0 }; if (l.jenis === 'keluar_fullscreen') g.fs++; else g.tab++; g.last = Math.max(g.last, l.waktu); });
+    var GL = Object.keys(gs).map(function (k) { return gs[k]; }).sort(function (a, b) { return (b.tab + b.fs) - (a.tab + a.fs); });
+    P.lcsv = [['Waktu', 'NIS', 'Nama', 'Jenis']].concat(d.log.slice().sort(function (a, b) { return b.waktu - a.waktu; }).map(function (l) { return [fmt(l.waktu), l.nis, l.nama, l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab']; }));
+    body = '<div class="grid g2" style="margin-top:16px"><div class="card"><h3>Ringkasan per siswa</h3><div class="tw">' + (GL.length ? '<table><thead><tr><th>Siswa</th><th>Pindah tab</th><th>Keluar layar penuh</th><th>Total</th></tr></thead><tbody>' + GL.map(function (g) {
+        var t = g.tab + g.fs; return '<tr><td><b>' + esc(g.nama) + '</b><br><span class="mono muted sm">' + esc(g.nis) + '</span></td><td>' + g.tab + '</td><td>' + g.fs + '</td><td><span class="badge ' + (t >= 3 ? 'b-bad' : 'b-warn') + '">' + t + '</span></td></tr>';
+      }).join('') + '</tbody></table>' : '<p class="muted">Tidak ada pelanggaran tercatat.</p>') + '</div></div>' +
+      '<div class="card"><h3>Rincian kejadian</h3><div class="tw" style="max-height:420px;overflow:auto">' + (d.log.length ? '<table><thead><tr><th>Waktu</th><th>Siswa</th><th>Jenis</th></tr></thead><tbody>' + d.log.slice().sort(function (a, b) { return b.waktu - a.waktu; }).map(function (l) {
+        return '<tr><td class="sm">' + fmt(l.waktu) + '</td><td>' + esc(l.nama) + '</td><td><span class="badge ' + (l.jenis === 'keluar_fullscreen' ? 'b-info' : 'b-warn') + '">' + (l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab') + '</span></td></tr>';
+      }).join('') + '</tbody></table>' : '<p class="muted">Tidak ada kejadian.</p>') + '</div></div></div>';
   }
-  P.lcsv = [H].concat(R);
-  var sub = [['rekap', 'Rekap Nilai'], ['analisis', 'Analisis Soal'], ['log', 'Log Pelanggaran']].map(function (t) { return '<button class="chip' + (s === t[0] ? ' on' : '') + '" onclick="App.lsub(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
-  $('#lp').innerHTML = '<div class="tabs" style="margin-top:0">' + sub + '<span class="sp"></span><button class="btn" onclick="App.unduhLap()">Unduh CSV (Excel)</button></div>' + top +
-    '<div class="card"><div class="tw"><table><thead><tr>' + H.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' +
-    R.map(function (r) { return '<tr>' + r.map(function (c, i) { return '<td' + (s === 'analisis' && i === 3 ? ' style="font-weight:600"' : '') + '>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' + (R.length ? '' : '<p class="muted">Belum ada data.</p>') + '</div>';
+  $('#lp').innerHTML = '<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><b>' + esc(d.judul) + '</b><div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal · ' + d.durasi + ' menit</div></div><button class="btn" onclick="App.unduhLap()">⬇ Unduh CSV (Excel)</button></div><div style="margin-top:12px">' + KP + '</div><div class="tabs" style="margin-bottom:0">' + tabs + '</div>' + body;
+  if (s === 'rekap') { drawLapTabel(); $('#lq').oninput = function () { P.lq = this.value; drawLapTabel(); }; }
 }
 
 /* ---------- API PUBLIK untuk onclick ---------- */
@@ -703,7 +844,11 @@ window.App = {
   ragu: function () { var s = cur(); if (X.ragu[s.id]) delete X.ragu[s.id]; else X.ragu[s.id] = 1; localSave(); drawQ(); },
   konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: function () { muatPantau(); },
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
-  lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '.csv', P.lcsv); },
+  lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '-' + String(P.lap.judul).replace(/\W+/g, '-') + '.csv', P.lcsv); },
+  menu: function (ev) { ev.stopPropagation(); var m = $('#um'); m.className = m.className.indexOf('hide') >= 0 ? 'umenu' : 'umenu hide'; }, ganti: gantiPw,
+  gf: guruForm, gpw: guruPw, ghapus: guruHapus,
+  pks: function () { $('#pkn').className = $('#pks').value === 'n' ? '' : 'hide'; },
+  kumpulAtur: function () { var m = $('#pks').value, kv = m === 'n' ? Number($('#pkn').value) : Number(m); if (m === 'n' && !(kv > 0)) { toast('Isi jumlah menit penguncian.', 'warn'); return; } Api.call('ujian.kumpulatur', { idUjian: P.cur, kumpul: kv }).then(function (r) { if (!r.success) { toast(r.message, 'error'); return; } toast(r.message); if (P.pd) P.pd.kumpul = r.data.kumpul; }); },
   tema: tema, setTema: function (t) { temaSet(t); tema(); }, lihat: function () { var i = $('#pw'); i.type = i.type === 'password' ? 'text' : 'password'; },
   bimp: impSoal, sf: soalForm, bm: function (m) { P.bs.mapel = m; P.bs.page = 1; drawBank(); }, bpg: function (d) { P.bs.page += d; drawBank(); },
   bsel: function (id, on) { if (on) P.bs.sel[id] = 1; else delete P.bs.sel[id]; drawBank(); }, bclr: function () { P.bs.sel = {}; drawBank(); },
