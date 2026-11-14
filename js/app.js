@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.4', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
+var VER = 'v2.5', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -478,7 +478,7 @@ function drawSiswa() {
   var el = $('#sl'); if (!el) return; var q = (P.sq || '').toLowerCase(), k = P.sk || '', kl = {};
   P.sw.forEach(function (s) { kl[s.kelas] = 1; });
   var L = P.sw.filter(function (s) { return (!k || s.kelas === k) && (!q || (s.nis + ' ' + s.nama).toLowerCase().indexOf(q) >= 0); });
-  el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><h3>Daftar siswa <span class="badge b-info">' + P.sw.length + '</span></h3><span style="flex:1"></span><button class="btn p sm" onclick="App.sForm(\'\')">+ Tambah siswa</button><input id="sq" placeholder="Cari NIS / nama..." value="' + esc(P.sq || '') + '" style="max-width:230px">' +
+  el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><h3>Daftar siswa <span class="badge b-info">' + P.sw.length + '</span></h3><span style="flex:1"></span><button class="btn p sm" onclick="App.sForm(\'\')">+ Tambah siswa</button><button class="btn sm" onclick="App.kartu()">🖨 Cetak kartu ujian</button><input id="sq" placeholder="Cari NIS / nama..." value="' + esc(P.sq || '') + '" style="max-width:230px">' +
     '<select id="sk" style="max-width:180px"><option value="">Semua kelas</option>' + Object.keys(kl).sort().map(function (x) { return '<option' + (k === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
     '<p class="muted sm">Password tersimpan sebagai hash sehingga <b>tidak dapat dilihat</b>. Admin dapat menetapkan password baru secara manual (atau acak) lewat tombol Password.</p>' +
     '<div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>' +
@@ -486,6 +486,33 @@ function drawSiswa() {
     '</tbody></table></div>' + (L.length > 200 ? '<p class="muted sm">Menampilkan 200 dari ' + L.length + ' — gunakan pencarian.</p>' : L.length ? '' : '<p class="muted">Tidak ada siswa.</p>');
   $('#sq').oninput = function () { P.sq = this.value; var p = this.selectionStart; drawSiswa(); var e = $('#sq'); e.focus(); e.setSelectionRange(p, p); };
   $('#sk').onchange = function () { P.sk = this.value; drawSiswa(); };
+}
+function kartu() { // reset password massal sesuai filter + cetak kartu peserta
+  var q = (P.sq || '').toLowerCase(), k = P.sk || '';
+  var L = P.sw.filter(function (s) { return s.status === 'aktif' && (!k || s.kelas === k) && (!q || (s.nis + ' ' + s.nama).toLowerCase().indexOf(q) >= 0); });
+  if (!L.length) { toast('Tidak ada siswa aktif pada filter saat ini', 'warn'); return; }
+  dlg('Cetak kartu ujian', '<p>Kartu dibuat untuk <b>' + L.length + ' siswa</b> ' + (k ? 'kelas <b>' + esc(k) + '</b>' : 'dari <b>semua kelas</b>') + (q ? ' (sesuai pencarian)' : '') + '.</p>' +
+    '<div class="note w"><b>Perhatian:</b> password siswa tidak dapat dilihat, jadi setiap kartu memuat <b>password baru</b>. Password lama siswa-siswa ini langsung <b>tidak berlaku</b>. Pastikan kartu dicetak dan dibagikan.</div>', 'Buat & Cetak Kartu', function (close, btn) {
+    var nis = L.map(function (s) { return s.nis; }), out = [], i = 0; btn.textContent = 'Membuat kartu...'; busy(true);
+    (function next() {
+      if (i >= nis.length) { busy(false); close(); tampilKartu(out); return; }
+      Api.call('siswa.kartu', { nis: nis.slice(i, i + 40) }).then(function (r) {
+        if (!r.success) { busy(false); close(); toast(r.message + (out.length ? ' Kartu yang sudah dibuat tetap ditampilkan.' : ''), 'error'); if (out.length) tampilKartu(out); return; }
+        out = out.concat(r.data); i += 40; next();
+      });
+    })();
+  });
+}
+function tampilKartu(L) {
+  L.sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
+  var base = location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, ''), pages = '';
+  for (var i = 0; i < L.length; i += 10) pages += '<div class="halaman">' + L.slice(i, i + 10).map(function (s) {
+    return '<div class="kartu"><div class="kh"><b>KARTU PESERTA UJIAN</b><span>' + esc(CFG.NAMA_SEKOLAH) + '</span></div><table><tr><td>Nama</td><td><b>' + esc(s.nama) + '</b></td></tr><tr><td>NIS</td><td><b>' + esc(s.nis) + '</b></td></tr><tr><td>Kelas</td><td>' + esc(s.kelas) + '</td></tr><tr><td>Password</td><td class="pw">' + esc(s.password) + '</td></tr></table>' +
+      '<div class="kf">Login: ' + esc(base) + '<br>Jaga kerahasiaan password. Token ujian diberikan oleh pengawas.</div></div>';
+  }).join('') + '</div>';
+  var o = document.createElement('div'); o.id = 'kartu';
+  o.innerHTML = '<div class="ktool"><b>' + L.length + ' kartu siap cetak</b><span class="muted sm">A4 · 10 kartu per halaman · potong di garis putus-putus</span><span style="flex:1"></span><button class="btn p" onclick="window.print()">🖨 Cetak</button><button class="btn" onclick="document.getElementById(\'kartu\').remove()">Tutup</button></div>' + pages;
+  document.body.appendChild(o);
 }
 function sForm(nis) {
   var s = nis ? P.sw.filter(function (x) { return x.nis === nis; })[0] : null, kl = {}; P.sw.forEach(function (x) { kl[x.kelas] = 1; });
@@ -576,7 +603,7 @@ window.App = {
   konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: function () { muatPantau(); },
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
   lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '.csv', P.lcsv); },
-  pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
+  kartu: kartu, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
   pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
   salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
   unduhPantau: function () { var d = P.pd; if (!d) return; unduh('pantau-' + d.judul.replace(/\W+/g, '-') + '.csv', [['NIS', 'Nama', 'Kelas', 'Status', 'Terjawab', 'Pindah tab', 'Nilai']].concat(d.rows.map(function (x) { return [x.nis, x.nama, x.kelas, x.status, x.jawab + '/' + d.jumlah, x.pelanggaran, x.nilai == null ? '' : x.nilai]; }))); },

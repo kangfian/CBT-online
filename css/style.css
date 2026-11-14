@@ -78,3 +78,14 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);bo
 .prog{height:8px;border-radius:99px;background:#E8EAF3;overflow:hidden;display:flex;margin:8px 0}.prog i{display:block;height:100%}
 .lg{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13px;line-height:18px}.lg:first-of-type{border-top:0}.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);margin-top:6px;flex:none}
 @media(max-width:900px){.g23{grid-template-columns:1fr}}
+
+/* kartu ujian (cetak A4, 10 kartu/halaman) */
+#kartu{position:fixed;inset:0;background:#e5e7eb;z-index:90;overflow:auto;padding-bottom:24px}
+.ktool{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:12px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:2}
+.halaman{width:210mm;margin:16px auto;background:#fff;padding:10mm;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:54mm;box-shadow:var(--sh2)}
+.kartu{border:1px dashed #6b7280;padding:3.5mm 5mm;display:flex;flex-direction:column;font-size:11px;line-height:15px;color:#000;overflow:hidden;background:#fff}
+.kartu .kh{display:flex;flex-direction:column;border-bottom:2px solid #1E3A5F;padding-bottom:3px;margin-bottom:5px}.kartu .kh b{font-size:13px;color:#1E3A5F}
+.kartu table{width:auto;font-size:12px}.kartu td{padding:1px 6px 1px 0;border:0;background:none!important}.kartu td:first-child{color:#555;width:62px}
+.kartu .pw{font:700 17px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em}.kartu .kf{margin-top:auto;font-size:9px;color:#444;line-height:12px}
+@page{size:A4;margin:0}
+@media print{body>*:not(#kartu){display:none!important}#kartu{position:static;background:#fff;overflow:visible;padding:0}.ktool{display:none}.halaman{margin:0;box-shadow:none;break-after:page;page-break-after:always}.halaman:last-child{break-after:auto;page-break-after:auto}}
