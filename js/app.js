@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.5', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0 };
+var VER = 'v2.6', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -21,23 +21,29 @@ function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e)
 function topbar() {
   var m = S.me;
   return '<header class="top"><div><div class="brand">CBT Online</div><div class="sub">' + esc(CFG.NAMA_SEKOLAH) + '</div></div><div class="sp"></div>' +
-    '<div class="who">Halo, ' + esc(m.nama) + '<br><small>' + (m.role === 'siswa' ? esc(m.kelas) : esc(m.role)) + '</small></div><button onclick="App.keluar()">Keluar</button></header>';
+    '<div class="who">Halo, ' + esc(m.nama) + '<br><small>' + (m.role === 'siswa' ? esc(m.kelas) : esc(m.role)) + '</small></div><button onclick="App.tema()">🎨 Tema</button><button onclick="App.keluar()">Keluar</button></header>';
 }
 
 /* ---------- LOGIN ---------- */
 function viewLogin(msg) {
-  var st = MODE === 'staf';
-  render('<div class="auth' + (st ? ' staf' : '') + '"><form class="card" id="f"><div style="text-align:center;margin-bottom:18px"><h1>' + (st ? 'Portal Admin &amp; Guru' : 'CBT Online') + '</h1><div class="muted">' + esc(CFG.NAMA_SEKOLAH) + '</div></div>' +
-    '<label class="field"><span>' + (st ? 'Username' : 'NIS') + '</span><input id="id" autocomplete="username" required></label>' +
-    '<label class="field"><span>Password</span><input id="pw" type="password" autocomplete="current-password" required></label>' +
-    '<div class="err" id="e">' + esc(msg || (Api.siap ? '' : 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.')) + '</div>' +
-    '<button class="btn p w" style="margin-top:12px">Masuk</button><p class="sm" style="text-align:center;margin:16px 0 0">' + (st ? '<a href="index.html">← Halaman login siswa</a>' : '<a href="admin.html">Admin / Guru? Masuk di sini</a>') + '</p></form></div>');
+  var st = MODE === 'staf', tgl = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+  var logo = CFG.LOGO ? '<img src="' + esc(CFG.LOGO) + '" alt="" style="width:44px;height:44px;border-radius:12px;object-fit:cover">' : '<span class="lg2-logo">🎓</span>';
+  var F = st ? [['📚', 'Bank soal terkelola', 'Import, edit, dan kelompokkan soal per mata pelajaran'], ['📡', 'Pantau langsung', 'Lihat progres dan pelanggaran siswa saat ujian'], ['📊', 'Laporan otomatis', 'Rekap nilai dan analisis soal siap unduh']] :
+    [['⏱', 'Timer akurat', 'Waktu dihitung dari server, adil untuk semua'], ['⚡', 'Nilai langsung', 'Hasil muncul begitu ujian dikumpulkan'], ['🛡', 'Aman & terawasi', 'Jawaban tersimpan otomatis dan ujian terpantau']];
+  render('<div class="lg2"><button class="tbtn" onclick="App.tema()">🎨 Tema</button><section class="lg2-hero"><i class="sh s1"></i><i class="sh s2"></i><i class="sh s3"></i>' +
+    '<div class="lg2-brand">' + logo + '<span>CBT Online</span></div><h1>' + (st ? 'Kelola ujian sekolah dalam satu tempat' : 'Ujian digital yang adil, cepat, dan terpercaya') + '</h1><p>' + esc(CFG.NAMA_SEKOLAH) + '</p>' +
+    '<ul class="lg2-feat">' + F.map(function (f) { return '<li><i>' + f[0] + '</i><div><b>' + f[1] + '</b><span>' + f[2] + '</span></div></li>'; }).join('') + '</ul><div class="lg2-foot">' + esc(tgl) + '</div></section>' +
+    '<section class="lg2-form"><form class="lg2-card" id="f"><div class="lg2-ava">' + (st ? '🛠️' : '🎓') + '</div><h2>' + (st ? 'Portal Admin &amp; Guru' : 'Selamat datang') + '</h2><p class="muted" style="margin:4px 0 20px">' + (st ? 'Masuk dengan username dan password akun Anda' : 'Masuk dengan NIS dan password pada kartu ujianmu') + '</p>' +
+    '<label class="field"><span>' + (st ? 'Username' : 'NIS') + '</span><div class="inp"><b>👤</b><input id="id" autocomplete="username" required placeholder="' + (st ? 'username' : 'Nomor Induk Siswa') + '"></div></label>' +
+    '<label class="field"><span>Password</span><div class="inp"><b>🔒</b><input id="pw" type="password" autocomplete="current-password" required placeholder="Password"><button type="button" class="eye" onclick="App.lihat()" aria-label="Tampilkan password">👁</button></div></label>' +
+    '<div class="err" id="e">' + esc(msg || (Api.siap ? '' : 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.')) + '</div><button class="btn p w lgb">Masuk →</button>' +
+    '<p class="sm" style="text-align:center;margin:18px 0 0">' + (st ? '<a href="index.html">← Halaman login siswa</a>' : '<a href="admin.html">Admin / Guru? Masuk di sini</a><br><span class="muted">Lupa password? Tanyakan ke pengawas ujian.</span>') + '</p></form></section></div>');
   $('#f').onsubmit = function (ev) {
-    ev.preventDefault(); var b = $('button', this); b.disabled = true; b.textContent = 'Memeriksa...'; busy(true);
+    ev.preventDefault(); var b = $('button.lgb', this); b.disabled = true; b.textContent = 'Memeriksa...'; busy(true);
     Api.call('login', { id: $('#id').value, password: $('#pw').value, tipe: MODE }).then(function (r) {
       busy(false);
       if (r.success) { Sesi.simpan({ token: r.data.token, me: r.data.me }); S.me = r.data.me; masuk(); }
-      else { b.disabled = false; b.textContent = 'Masuk'; $('#e').textContent = r.message; }
+      else { b.disabled = false; b.textContent = 'Masuk →'; $('#e').textContent = r.message; }
     });
   };
 }
@@ -102,38 +108,66 @@ function buka(id) {
 function mulai(resume) {
   var tk = resume ? '' : ($('#tk').value || '').trim(), b = $('#go');
   if (!resume && !tk) { $('#e').textContent = 'Token wajib diisi.'; return; }
+  fsMasuk(); // harus di dalam klik pengguna
   if (b) { b.disabled = true; b.textContent = 'Memeriksa token...'; } busy(true);
   Api.call('ujian.mulai', { idUjian: S.cur.id, token: tk }).then(function (r) {
     busy(false);
     if (r.success) { S.skew = r.data.now - Date.now(); startExam(r.data); return; }
+    fsKeluar();
     if (b) { b.disabled = false; b.textContent = 'Verifikasi Token & Mulai Ujian'; $('#e').textContent = r.message; } else toast(r.message, 'error');
     if (r.code === 'HABIS') dash();
   });
 }
 
-/* ---------- SUARA PERINGATAN ---------- */
-var MSG = ['Peringatan pertama. Anda terdeteksi berpindah tab. Mohon tetap berada di halaman ujian.', 'Peringatan kedua. Jika Anda berpindah tab sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'];
-function tts(n) { // suara pengucap (bahasa Indonesia) bawaan perangkat
+/* ---------- SUARA PERINGATAN, LAYAR PENUH, TEMA ---------- */
+var MSG = { pindah_tab: ['Peringatan pertama. Anda terdeteksi berpindah tab. Mohon tetap berada di halaman ujian.', 'Peringatan kedua. Jika Anda berpindah tab sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'],
+  keluar_fullscreen: ['Peringatan pertama. Anda keluar dari layar penuh. Segera kembali ke layar penuh.', 'Peringatan kedua. Jika Anda keluar dari layar penuh sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'] };
+function tts(n, j) { // suara pengucap (bahasa Indonesia) bawaan perangkat
   if (!window.speechSynthesis) return;
-  var u = new SpeechSynthesisUtterance(MSG[n - 1]), v = speechSynthesis.getVoices().filter(function (x) { return /^id/i.test(x.lang); })[0];
+  var u = new SpeechSynthesisUtterance(MSG[j || 'pindah_tab'][n - 1]), v = speechSynthesis.getVoices().filter(function (x) { return /^id/i.test(x.lang); })[0];
   u.lang = 'id-ID'; u.rate = 0.95; u.volume = 1; if (v) u.voice = v; speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
-function suara(n) { // utamakan rekaman suara orang (audio/peringatan-N.mp3) bila ada, jika tidak pakai tts
-  var done = false, fb = function () { if (!done) { done = true; tts(n); } };
-  try { var a = new Audio('audio/peringatan-' + n + '.mp3'); a.onerror = fb; var p = a.play(); if (p && p.catch) p.catch(fb); } catch (e) { fb(); }
+function suara(n, j) { // utamakan rekaman suara orang (audio/peringatan-N.mp3 atau audio/layarpenuh-N.mp3) bila ada
+  var done = false, fb = function () { if (!done) { done = true; tts(n, j); } };
+  try { var a = new Audio((j === 'keluar_fullscreen' ? 'audio/layarpenuh-' : 'audio/peringatan-') + n + '.mp3'); a.onerror = fb; var p = a.play(); if (p && p.catch) p.catch(fb); } catch (e) { fb(); }
 }
-function popPel(n) { // pop-up peringatan pelanggaran untuk siswa
+function popPel(n, j) { // pop-up peringatan pelanggaran untuk siswa
   var o = $('#pp'); if (o) o.remove();
-  var fin = n >= 3, m = document.createElement('div'); m.className = 'modal'; m.id = 'pp';
-  var dots = [1, 2, 3].map(function (i) { return '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 4px;background:' + (i <= n ? 'var(--bad)' : '#E2E8F0') + '"></span>'; }).join('');
-  m.innerHTML = '<div class="card" style="text-align:center;border-top:6px solid var(--bad)"><div style="font-size:46px;line-height:56px">⚠️</div><h2 style="color:var(--bad);margin:4px 0 10px">' + (fin ? 'Ujian Dikumpulkan Otomatis' : 'Peringatan Pelanggaran ' + n + ' dari 3') + '</h2>' +
-    '<p>' + esc(MSG[n - 1]) + '</p><div style="margin:14px 0">' + dots + '</div><p class="sm muted">Berpindah tab atau jendela selama ujian tercatat dan dilaporkan ke guru.</p>' +
-    '<div class="row" style="justify-content:center"><button class="btn p" id="okp">' + (fin ? 'Lihat Hasil' : 'Saya Mengerti, Lanjutkan Ujian') + '</button></div></div>';
+  var fs = j === 'keluar_fullscreen', fin = n >= 3, m = document.createElement('div'); m.className = 'modal'; m.id = 'pp';
+  var dots = [1, 2, 3].map(function (i) { return '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 4px;background:' + (i <= n ? 'var(--bad)' : 'var(--line)') + '"></span>'; }).join('');
+  m.innerHTML = '<div class="card" style="text-align:center;border-top:6px solid var(--bad)"><div style="font-size:46px;line-height:56px">' + (fs ? '🖥️' : '⚠️') + '</div><h2 style="color:var(--bad);margin:4px 0 10px">' + (fin ? 'Ujian Dikumpulkan Otomatis' : fs ? 'Anda Keluar dari Layar Penuh' : 'Peringatan Pelanggaran ' + n + ' dari 3') + '</h2>' +
+    '<p>' + esc(MSG[fs ? 'keluar_fullscreen' : 'pindah_tab'][n - 1]) + '</p><div style="margin:14px 0">' + dots + '</div><p class="sm muted">' + (fs ? 'Ujian harus dikerjakan dalam layar penuh. Keluar dari layar penuh tercatat sebagai pelanggaran (' + Math.min(n, 3) + ' dari 3).' : 'Berpindah tab atau jendela selama ujian tercatat dan dilaporkan ke guru.') + '</p>' +
+    '<div class="row" style="justify-content:center"><button class="btn p" id="okp">' + (fin ? 'Lihat Hasil' : fs ? 'Kembali ke Layar Penuh' : 'Saya Mengerti, Lanjutkan Ujian') + '</button></div></div>';
   document.body.appendChild(m); $('#okp').focus();
-  $('#okp').onclick = function () { m.remove(); if (window.speechSynthesis) speechSynthesis.cancel(); };
+  $('#okp').onclick = function () { m.remove(); if (window.speechSynthesis) speechSynthesis.cancel(); if (!fin && X && X.aktif) fsMasuk(); };
 }
-document.addEventListener('visibilitychange', function () { if (!document.hidden && V.n) { var n = V.n; V.n = 0; popPel(n); setTimeout(function () { suara(n); }, 250); } });
+document.addEventListener('visibilitychange', function () { if (!document.hidden && V.n) { var n = V.n, j = V.j; V.n = 0; popPel(n, j); setTimeout(function () { suara(n, j); }, 250); } });
 if (window.speechSynthesis) speechSynthesis.getVoices();
+
+function fsOk() { var e = document.documentElement; return !!(e && (e.requestFullscreen || e.webkitRequestFullscreen)); }
+function fsAktif() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function fsMasuk() { // harus dipanggil dari klik/ketukan pengguna
+  var e = document.documentElement, f = e && (e.requestFullscreen || e.webkitRequestFullscreen); if (!f) return Promise.resolve(false);
+  try { var p = f.call(e); return p && p.then ? p.then(function () { return true; }, function () { return false; }) : Promise.resolve(true); } catch (x) { return Promise.resolve(false); }
+}
+function fsKeluar() { try { var f = document.exitFullscreen || document.webkitExitFullscreen; if (fsAktif() && f) { var p = f.call(document); if (p && p.catch) p.catch(function () {}); } } catch (x) {} }
+function fsGate() { // dipakai bila ujian dimuat ulang/lanjut dan layar penuh belum aktif
+  if ($('#fg')) return; var m = document.createElement('div'); m.className = 'modal'; m.id = 'fg';
+  m.innerHTML = '<div class="card" style="text-align:center"><div style="font-size:46px">🖥️</div><h2>Mode Layar Penuh Diperlukan</h2><p class="muted">Ujian dikerjakan dalam layar penuh. Keluar dari layar penuh selama ujian tercatat sebagai pelanggaran.</p><div class="row" style="justify-content:center"><button class="btn a" id="fgo">Masuk Layar Penuh</button></div></div>';
+  document.body.appendChild(m);
+  $('#fgo').onclick = function () { fsMasuk().then(function (ok) { if (X) X.fsTry = (X.fsTry || 0) + 1; if (ok || (X && X.fsTry >= 2)) { m.remove(); if (X) X.fsOn = fsAktif(); if (!ok) toast('Layar penuh tidak tersedia di perangkat ini. Ujian dilanjutkan.', 'warn'); } else toast('Browser menolak layar penuh. Coba sekali lagi.', 'error'); }); };
+}
+
+var TEMA = [['terang', 'Terang', '#1E3A5F', '#FFFFFF'], ['gelap', 'Gelap', '#0f1830', '#171f36'], ['hijau', 'Hijau', '#166534', '#f6fbf7'], ['ungu', 'Ungu', '#5B21B6', '#faf7ff']];
+function temaGet() { try { return localStorage.getItem('cbt_tema') || 'terang'; } catch (e) { return 'terang'; } }
+function temaSet(t) { try { localStorage.setItem('cbt_tema', t); } catch (e) {} var R = document.documentElement; if (R && R.setAttribute) R.setAttribute('data-theme', t); }
+function tema() {
+  var o = $('#tm'); if (o) o.remove(); var m = document.createElement('div'); m.className = 'modal'; m.id = 'tm'; var cur = temaGet();
+  m.innerHTML = '<div class="card"><h2>Pilih tema tampilan</h2><div class="grid g2" style="margin-top:14px;gap:12px">' + TEMA.map(function (t) {
+    return '<button class="tema' + (cur === t[0] ? ' on' : '') + '" onclick="App.setTema(\'' + t[0] + '\')"><span class="sw" style="background:linear-gradient(135deg,' + t[2] + ' 50%,' + t[3] + ' 50%)"></span>' + t[1] + '</button>';
+  }).join('') + '</div><div class="row"><button class="btn p" onclick="document.getElementById(\'tm\').remove()">Selesai</button></div></div>';
+  document.body.appendChild(m);
+}
 
 /* ---------- RUANG UJIAN ---------- */
 function rng(str) { var h = 1779033703 ^ str.length; for (var i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
@@ -154,7 +188,8 @@ function startExam(d) {
     '<div class="xgrid"><div class="card" id="q"></div><div class="card navcard" id="nv"></div></div></main>');
   drawQ(); banner();
   X.t = setInterval(tick, 1000); tick();
-  document.addEventListener('visibilitychange', onVis);
+  document.addEventListener('visibilitychange', onVis); document.addEventListener('fullscreenchange', onFs); document.addEventListener('webkitfullscreenchange', onFs);
+  X.fsOn = fsAktif(); if (fsOk() && !X.fsOn) fsGate();
   window.onbeforeunload = function () { return X && X.aktif ? 'Ujian sedang berlangsung.' : undefined; };
 }
 function localSave() { save('cbt_exam', { id: X.id, jawab: X.jawab, ragu: X.ragu, idx: X.idx }); }
@@ -197,14 +232,21 @@ function tick() {
   e.textContent = mmss(sisa); e.className = 'timer' + (sisa < 120000 ? ' bad' : sisa < 600000 ? ' warn' : '');
   if (++X.n % 15 === 0) flush();
 }
-function onVis() {
-  if (!X || !X.aktif || !document.hidden) return;
-  X.pel++; V.n = Math.min(X.pel, 3); banner();
-  Api.call('pelanggaran.catat', { idSesi: X.id }).then(function (r) {
+function catat(jenis) { // satu pintu pencatatan pelanggaran (pindah tab / keluar layar penuh)
+  if (!X || !X.aktif) return; var t = Date.now(); if (t - (X.lp || 0) < 1500) return; X.lp = t;
+  X.pel++; V.n = Math.min(X.pel, 3); V.j = jenis; banner();
+  if (jenis === 'keluar_fullscreen' && !document.hidden) { var n = V.n; V.n = 0; popPel(n, jenis); setTimeout(function () { suara(n, jenis); }, 250); }
+  Api.call('pelanggaran.catat', { idSesi: X.id, jenis: jenis }).then(function (r) {
     if (r.success && r.data && r.data.hasil) tamat(r.data.hasil);
     else if (r.success && r.data && r.data.selesai) kumpul(true);
     else if (!r.success && X && X.pel >= 3) kumpul(true);
   });
+}
+function onVis() { if (X && X.aktif && document.hidden) catat('pindah_tab'); }
+function onFs() {
+  if (!X || !X.aktif) return;
+  if (fsAktif()) { X.fsOn = true; var g = $('#fg'); if (g) g.remove(); return; }
+  if (X.fsOn) { X.fsOn = false; catat('keluar_fullscreen'); }
 }
 function banner() {
   var b = $('#ban'); if (!b) return;
@@ -228,7 +270,7 @@ function kumpul(auto) {
 }
 function tamat(res) {
   if (!X || !X.aktif) return; X.aktif = false; clearInterval(X.t);
-  document.removeEventListener('visibilitychange', onVis); window.onbeforeunload = null;
+  document.removeEventListener('visibilitychange', onVis); document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('webkitfullscreenchange', onFs); window.onbeforeunload = null; fsKeluar();
   try { localStorage.removeItem('cbt_exam'); } catch (e) {}
   var m = $('#md'); if (m) m.remove();
   var u = S.cur; if (u) { u.sesi = { status: res.status, nilai: res.nilai }; save('cbt_ujian', { ujian: S.ujian, skew: S.skew }); }
@@ -248,7 +290,7 @@ function panel() {
   var adm = S.me.role === 'admin', T = [['dash', 'Dashboard'], ['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
   render('<div class="shell"><nav class="side"><div class="brand">CBT Online<div class="xs" style="color:#adc8f5">' + (adm ? 'Admin' : 'Guru') + '</div></div>' +
     T.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" onclick="App.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') +
-    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
+    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.tema()">🎨 Tema</button><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="me"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
@@ -285,8 +327,8 @@ function drawAdmDash() {
   var mx = Math.max.apply(null, d.hist.concat([1])), lab = ['< 60', '60–69', '70–79', '80–89', '90–100'], col = ['#EF4444', '#F59E0B', '#EAB308', '#3B82F6', '#16A34A'];
   var chart = '<svg viewBox="0 0 400 200" style="width:100%;height:auto" role="img" aria-label="Distribusi nilai">' + d.hist.map(function (v, i) {
     var hh = Math.round(v / mx * 130), x = 20 + i * 76;
-    return '<rect x="' + x + '" y="' + (150 - hh) + '" width="56" height="' + hh + '" rx="6" fill="' + col[i] + '"/><text x="' + (x + 28) + '" y="' + (144 - hh) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#1A1A2E">' + v + '</text><text x="' + (x + 28) + '" y="174" text-anchor="middle" font-size="12" fill="#43474e">' + lab[i] + '</text>';
-  }).join('') + '<line x1="10" y1="150" x2="390" y2="150" stroke="#E2E8F0"/></svg>';
+    return '<rect x="' + x + '" y="' + (150 - hh) + '" width="56" height="' + hh + '" rx="6" fill="' + col[i] + '"/><text x="' + (x + 28) + '" y="' + (144 - hh) + '" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--text)">' + v + '</text><text x="' + (x + 28) + '" y="174" text-anchor="middle" font-size="12" style="fill:var(--muted)">' + lab[i] + '</text>';
+  }).join('') + '<line x1="10" y1="150" x2="390" y2="150" style="stroke:var(--line)"/></svg>';
   var lg = d.log.length ? d.log.map(function (l) { return '<div class="lg"><span class="dot"></span><div><b>' + esc(l.nama) + '</b> pindah tab<br><span class="muted">' + esc(l.ujian) + ' · ' + fmt(l.waktu) + '</span></div></div>'; }).join('') : '<p class="muted sm">Belum ada pelanggaran tercatat.</p>';
   var SB = { berlangsung: 'b-ok', terjadwal: 'b-info', selesai: 'b-mut' };
   var tb = d.ujian.length ? '<table><thead><tr><th>Ujian</th><th>Kelas</th><th>Jadwal</th><th>Status</th><th>Peserta</th><th>Selesai</th><th>Rata-rata</th><th>Pelanggaran</th><th></th></tr></thead><tbody>' + d.ujian.map(function (u) {
@@ -347,9 +389,9 @@ function drawTabel() {
   var d = P.pd; if (!d) return; var q = (P.ps || '').toLowerCase(), f = P.pf || 'semua';
   var B = { belum: ['b-mut', 'Belum mulai'], berlangsung: ['b-info', 'Mengerjakan'], dikumpulkan: ['b-ok', 'Selesai'], 'dikumpulkan-otomatis': ['b-warn', 'Dikumpulkan otomatis'] };
   var L = d.rows.filter(function (x) { return (f === 'semua' || (f === 'pel' ? x.pelanggaran > 0 : pStat(x) === f)) && (!q || (x.nis + ' ' + x.nama).toLowerCase().indexOf(q) >= 0); });
-  $('#ptb').innerHTML = L.length ? '<table><thead><tr><th>Siswa</th><th>Kelas</th><th>Status</th><th style="min-width:130px">Progres jawaban</th><th>Pindah tab</th><th>Nilai</th></tr></thead><tbody>' + L.map(function (x) {
+  $('#ptb').innerHTML = L.length ? '<table><thead><tr><th>Siswa</th><th>Kelas</th><th>Status</th><th style="min-width:130px">Progres jawaban</th><th>Pelanggaran</th><th>Nilai</th></tr></thead><tbody>' + L.map(function (x) {
     var p = d.jumlah ? Math.round(x.jawab / d.jumlah * 100) : 0, b = B[x.status] || B.belum;
-    return '<tr style="' + (x.pelanggaran >= 3 ? 'background:#FFF5F5' : x.pelanggaran ? 'background:#FFFBEB' : '') + '"><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><div><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></div></div></td><td>' + esc(x.kelas) + '</td>' +
+    return '<tr style="' + (x.pelanggaran >= 3 ? 'background:var(--bad-bg)' : x.pelanggaran ? 'background:var(--warn-bg)' : '') + '"><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><div><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></div></div></td><td>' + esc(x.kelas) + '</td>' +
       '<td><span class="badge ' + b[0] + '">' + b[1] + '</span></td><td><div class="sm">' + x.jawab + ' / ' + d.jumlah + '</div><div class="prog" style="margin:4px 0 0"><i style="width:' + p + '%;background:var(--primary)"></i></div></td>' +
       '<td>' + (x.pelanggaran >= 3 ? '<span class="badge b-bad">' + x.pelanggaran + 'x terkunci</span>' : x.pelanggaran ? '<span class="badge b-warn">' + x.pelanggaran + 'x</span>' : '<span class="muted">0x</span>') + '</td><td><b>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</b></td></tr>';
   }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada siswa pada filter ini.</p>';
@@ -437,21 +479,80 @@ function hasilImp(r, dry) {
 }
 
 function tSoal() {
-  pc('<h1>Bank Soal</h1><div class="card" style="margin-top:16px"><h3>Import soal dari Excel / CSV</h3><p class="muted sm">Kolom: Mapel, Pertanyaan, A, B, C, D, E (opsional), Kunci (huruf A–E).</p>' +
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input type="file" id="fi" accept=".csv,.xlsx,.xls" style="flex:1;min-width:220px"><button class="btn" onclick="App.tmplSoal()">Unduh template</button></div>' +
-    '<div id="pv" class="muted sm" style="margin:10px 0"></div><div style="display:flex;gap:8px"><button class="btn" id="b1" disabled>Pindai (dry-run)</button><button class="btn p" id="b2" disabled>Jalankan Import</button></div><div id="rs"></div></div><div class="card" style="margin-top:16px" id="bl"><div class="sk"></div></div>');
-  var rows = [];
-  $('#fi').onchange = function () { var f = this.files[0]; if (!f) return; bacaFile(f).then(function (r) { rows = r; $('#pv').textContent = rows.length + ' baris terbaca dari ' + f.name; $('#b1').disabled = $('#b2').disabled = !rows.length; }, function (e) { toast(e.message, 'error'); }); };
-  var run = function (dry) { return function () { kirimBatch('soal.import', rows, { dryRun: dry }, 200).then(function (r) { $('#rs').innerHTML = hasilImp(r, dry); if (!dry) { toast('Soal berhasil diimpor'); listSoal(); } }, function (e) { toast(e.message, 'error'); }); }; };
-  $('#b1').onclick = run(true); $('#b2').onclick = function () { if (confirm('Import ' + rows.length + ' baris ke bank soal?')) run(false)(); };
-  listSoal();
+  pc('<h1>Bank Soal</h1><div class="sk" style="margin-top:16px;min-height:220px"></div>'); P.bs = { all: [], sel: {}, page: 1, mapel: '', q: '', vis: [] }; muatSoal(true);
 }
-function listSoal() {
-  Api.call('soal.list').then(function (r) {
-    if (!r.success) return; var el = $('#bl'); if (!el) return;
-    el.innerHTML = '<h3>Daftar soal <span class="badge b-info">' + r.data.length + '</span></h3><div class="tw"><table><thead><tr><th>Mapel</th><th>Pertanyaan</th><th>Kunci</th></tr></thead><tbody>' +
-      r.data.slice(-100).reverse().map(function (s) { return '<tr><td>' + esc(s.mapel || '-') + '</td><td>' + esc(s.t) + '</td><td>' + esc(s.kunci) + '</td></tr>'; }).join('') + '</tbody></table></div>' + baris(r.data);
+function muatSoal(awal) {
+  Api.call('soal.semua').then(function (r) {
+    if (P.tab !== 'soal') return; if (!r.success) return pc('<h1>Bank Soal</h1><p class="err">' + esc(r.message) + '</p>');
+    P.bs.all = r.data; P.bs.sel = {};
+    if (awal || !$('#btb')) {
+      pc('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Bank Soal</h1><div class="muted sm">Kelola soal per mata pelajaran</div></div><button class="btn" onclick="App.bimp()">⬆ Import Excel/CSV</button><button class="btn" onclick="App.bcsv()">⬇ Unduh CSV</button><button class="btn p" onclick="App.sf(\'\')">+ Tambah soal</button></div>' +
+        '<div id="bch" class="tabs" style="margin-bottom:12px"></div><div class="card"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input id="bq" placeholder="Cari isi soal..." style="max-width:300px"><span id="bba" style="flex:1"></span><span class="sm muted" id="bin"></span></div>' +
+        '<div class="tw" id="btb" style="margin-top:12px"></div><div id="bpg" style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px"></div></div>');
+      $('#bq').oninput = function () { P.bs.q = this.value; P.bs.page = 1; drawBank(); };
+    }
+    drawBank();
   });
+}
+function drawBank() {
+  var B = P.bs, q = B.q.toLowerCase(), cnt = {}, tot = B.all.length;
+  B.all.forEach(function (s) { cnt[s.mapel] = (cnt[s.mapel] || 0) + 1; });
+  var L = B.all.filter(function (s) { return (!B.mapel || s.mapel === B.mapel) && (!q || s.t.toLowerCase().indexOf(q) >= 0); });
+  var per = 15, hal = Math.max(1, Math.ceil(L.length / per)); if (B.page > hal) B.page = hal;
+  var V0 = L.slice((B.page - 1) * per, B.page * per), ns = Object.keys(B.sel).length; B.vis = V0.map(function (s) { return s.id; });
+  $('#bch').innerHTML = '<button class="chip' + (!B.mapel ? ' on' : '') + '" onclick="App.bm(\'\')">Semua (' + tot + ')</button>' + Object.keys(cnt).sort().map(function (m) { return '<button class="chip' + (B.mapel === m ? ' on' : '') + '" data-m="' + esc(m) + '" onclick="App.bm(this.getAttribute(\'data-m\'))">' + esc(m) + ' (' + cnt[m] + ')</button>'; }).join('');
+  $('#bba').innerHTML = ns ? '<b>' + ns + ' dipilih</b> <button class="btn sm d" onclick="App.bdelSel()">🗑 Hapus terpilih</button> <button class="btn sm" onclick="App.bclr()">Batal pilih</button>' : '';
+  $('#bin').textContent = L.length + ' soal';
+  var allSel = V0.length && V0.every(function (s) { return B.sel[s.id]; });
+  $('#btb').innerHTML = !tot ? '<div style="text-align:center;padding:36px"><h2>Bank soal masih kosong</h2><p class="muted">Tambah soal satu per satu atau import dari Excel/CSV.</p><button class="btn p" onclick="App.sf(\'\')">+ Tambah soal</button> <button class="btn" onclick="App.bimp()">⬆ Import</button></div>' :
+    L.length ? '<table><thead><tr><th style="width:34px"><input type="checkbox" style="width:auto;min-height:0" onchange="App.bselAll(this.checked)"' + (allSel ? ' checked' : '') + '></th><th>No</th><th>Mapel</th><th>Pertanyaan</th><th>Kunci</th><th>Dipakai</th><th></th></tr></thead><tbody>' + V0.map(function (s, i) {
+      return '<tr><td><input type="checkbox" style="width:auto;min-height:0" onchange="App.bsel(\'' + s.id + '\',this.checked)"' + (B.sel[s.id] ? ' checked' : '') + '></td><td>' + ((B.page - 1) * per + i + 1) + '</td><td><span class="badge b-info">' + esc(s.mapel) + '</span></td><td><div class="clamp">' + esc(s.t) + '</div></td><td><b>' + esc(s.kunci) + '</b></td>' +
+        '<td>' + (s.dipakai ? '<span class="badge ' + (s.terkunci ? 'b-warn' : 'b-ok') + '">' + s.dipakai + ' ujian' + (s.terkunci ? ' 🔒' : '') + '</span>' : '<span class="muted">—</span>') + '</td><td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.sf(\'' + s.id + '\')">Lihat / Edit</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sdel(\'' + s.id + '\')">Hapus</button></td></tr>';
+    }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada soal yang cocok.</p>';
+  $('#bpg').innerHTML = hal > 1 ? '<button class="btn sm" onclick="App.bpg(-1)"' + (B.page <= 1 ? ' disabled' : '') + '>← Sebelumnya</button><span class="sm">Halaman ' + B.page + ' dari ' + hal + '</span><button class="btn sm" onclick="App.bpg(1)"' + (B.page >= hal ? ' disabled' : '') + '>Berikutnya →</button>' : '';
+}
+function soalForm(id, dup) {
+  var s = id ? P.bs.all.filter(function (x) { return x.id === id; })[0] : null; if (id && !s) return;
+  var lock = !!(s && s.terkunci && !dup), M = {}, o = s ? s.o : { A: '', B: '', C: '', D: '', E: '' }; P.bs.all.forEach(function (x) { M[x.mapel] = 1; });
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<form class="card" style="max-width:640px;max-height:92vh;overflow:auto"><h2>' + (dup ? 'Duplikat soal' : s ? 'Lihat / Edit soal' : 'Tambah soal') + '</h2>' +
+    (lock ? '<div class="note w">Soal ini sudah dipakai ujian yang sudah dikerjakan sehingga tidak dapat diubah. Gunakan <b>Duplikat</b> untuk membuat versi baru.</div>' : '') +
+    '<label class="field" style="margin-top:12px"><span>Mata pelajaran *</span><input id="sm" list="dlm" value="' + esc(s ? s.mapel : (P.bs.mapel || '')) + '" required placeholder="mis. Matematika"><datalist id="dlm">' + Object.keys(M).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></label>' +
+    '<label class="field"><span>Pertanyaan *</span><textarea id="st" rows="4" required>' + esc(s ? s.t : '') + '</textarea></label><div class="field"><span>Pilihan jawaban * <small class="muted">(pilih bulatan untuk menandai kunci)</small></span>' +
+    ['A', 'B', 'C', 'D', 'E'].map(function (l) { return '<div class="oprow"><label class="kr"><input type="radio" name="kk" value="' + l + '"' + (s && s.kunci === l ? ' checked' : '') + '><b>' + l + '</b></label><input id="o' + l + '" value="' + esc(o[l]) + '" placeholder="' + (l === 'E' ? 'Opsi E (opsional)' : 'Opsi ' + l) + '"></div>'; }).join('') + '</div>' +
+    '<div class="err" id="e"></div><div class="row" style="flex-wrap:wrap">' + (s && !dup ? '<button type="button" class="btn" onclick="document.getElementById(\'md\').remove();App.sf(\'' + s.id + '\',1)">Duplikat</button>' : '') + '<span style="flex:1"></span><button type="button" class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button>' +
+    (!s || dup ? '<button type="button" class="btn" id="sv2">Simpan &amp; tambah lagi</button>' : '') + (lock ? '' : '<button class="btn p" id="sv">Simpan</button>') + '</div></form>';
+  document.body.appendChild(m);
+  if (lock) Array.prototype.forEach.call(m.querySelectorAll('input,textarea'), function (e) { e.disabled = true; });
+  var kirim = function (lagi) {
+    var k = m.querySelector('input[name=kk]:checked'), body = { id: s && !dup ? s.id : '', mapel: $('#sm').value, t: $('#st').value, kunci: k ? k.value : '', o: {} };
+    ['A', 'B', 'C', 'D', 'E'].forEach(function (l) { body.o[l] = $('#o' + l).value; });
+    Api.call('soal.simpan', body).then(function (r) {
+      if (!r.success) { $('#e').textContent = r.message; return; }
+      toast('Soal disimpan'); muatSoal();
+      if (lagi) { ['st', 'oA', 'oB', 'oC', 'oD', 'oE'].forEach(function (i) { $('#' + i).value = ''; }); var kk = m.querySelector('input[name=kk]:checked'); if (kk) kk.checked = false; $('#e').textContent = ''; $('#st').focus(); } else m.remove();
+    });
+  };
+  m.querySelector('form').onsubmit = function (ev) { ev.preventDefault(); kirim(false); };
+  if ($('#sv2')) $('#sv2').onclick = function () { kirim(true); };
+}
+function soalHapus(ids, ket) {
+  dlg('Hapus soal?', '<p>' + ket + '</p><p class="muted">Soal dihapus permanen dari bank soal. Soal yang sedang dipakai ujian tidak dapat dihapus.</p>', 'Ya, Hapus', function (close, btn) {
+    Api.call('soal.hapus', { ids: ids }).then(function (r) {
+      if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; }
+      close(); var d = r.data; toast(d.dihapus + ' soal dihapus' + (d.ditolak.length ? ', ' + d.ditolak.length + ' ditolak (' + d.ditolak[0].alasan + ')' : ''), d.ditolak.length ? 'warn' : ''); muatSoal();
+    });
+  }, true);
+}
+function impSoal() {
+  var m = document.createElement('div'); m.className = 'modal'; m.id = 'md';
+  m.innerHTML = '<div class="card" style="max-width:600px;max-height:92vh;overflow:auto"><h2>Import soal dari Excel / CSV</h2><p class="muted sm">Kolom: Mapel, Pertanyaan, A, B, C, D, E (opsional), Kunci (huruf A–E). Mapel kosong dianggap "Umum".</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input type="file" id="fi" accept=".csv,.xlsx,.xls" style="flex:1;min-width:200px"><button class="btn" onclick="App.tmplSoal()">Unduh template</button></div><div id="pv" class="muted sm" style="margin:10px 0"></div>' +
+    '<div style="display:flex;gap:8px"><button class="btn" id="b1" disabled>Pindai (dry-run)</button><button class="btn p" id="b2" disabled>Jalankan Import</button></div><div id="rs"></div><div class="row"><button class="btn" onclick="document.getElementById(\'md\').remove()">Tutup</button></div></div>';
+  document.body.appendChild(m); var rows = [];
+  $('#fi').onchange = function () { var f = this.files[0]; if (!f) return; bacaFile(f).then(function (r) { rows = r; $('#pv').textContent = rows.length + ' baris terbaca dari ' + f.name; $('#b1').disabled = $('#b2').disabled = !rows.length; }, function (e) { toast(e.message, 'error'); }); };
+  var run = function (dry) { return function () { kirimBatch('soal.import', rows, { dryRun: dry }, 200).then(function (r) { $('#rs').innerHTML = hasilImp(r, dry); if (!dry) { toast('Soal berhasil diimpor'); muatSoal(); } }, function (e) { toast(e.message, 'error'); }); }; };
+  $('#b1').onclick = run(true); $('#b2').onclick = function () { if (confirm('Import ' + rows.length + ' baris ke bank soal?')) run(false)(); };
 }
 function tSiswa() {
   pc('<h1>Kelola Siswa</h1><div class="card" style="margin-top:16px"><h3>Import data siswa dari Excel / CSV</h3><p class="muted sm">Kolom: NIS, Nama, Kelas. Di Excel, format kolom NIS sebagai <b>Teks</b> agar angka 0 di depan tidak hilang. Aman diulang: NIS yang sama hanya diperbarui, tidak digandakan.</p>' +
@@ -585,7 +686,7 @@ function drawLap() {
     H = ['No', 'Soal', 'Kunci', '% benar', 'Sebaran jawaban'];
     R = d.analisis.map(function (a, i) { return [i + 1, a.t, a.kunci, a.benar + '%', Object.keys(a.dist).sort().map(function (l) { return l + ':' + a.dist[l]; }).join('  ') || '-']; });
   } else {
-    H = ['Waktu', 'NIS', 'Nama', 'Jenis']; R = d.log.map(function (l) { return [fmt(l.waktu), l.nis, l.nama, l.jenis]; });
+    H = ['Waktu', 'NIS', 'Nama', 'Jenis']; R = d.log.map(function (l) { return [fmt(l.waktu), l.nis, l.nama, l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab']; });
   }
   P.lcsv = [H].concat(R);
   var sub = [['rekap', 'Rekap Nilai'], ['analisis', 'Analisis Soal'], ['log', 'Log Pelanggaran']].map(function (t) { return '<button class="chip' + (s === t[0] ? ' on' : '') + '" onclick="App.lsub(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
@@ -603,6 +704,13 @@ window.App = {
   konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: function () { muatPantau(); },
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
   lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '.csv', P.lcsv); },
+  tema: tema, setTema: function (t) { temaSet(t); tema(); }, lihat: function () { var i = $('#pw'); i.type = i.type === 'password' ? 'text' : 'password'; },
+  bimp: impSoal, sf: soalForm, bm: function (m) { P.bs.mapel = m; P.bs.page = 1; drawBank(); }, bpg: function (d) { P.bs.page += d; drawBank(); },
+  bsel: function (id, on) { if (on) P.bs.sel[id] = 1; else delete P.bs.sel[id]; drawBank(); }, bclr: function () { P.bs.sel = {}; drawBank(); },
+  bselAll: function (on) { P.bs.vis.forEach(function (id) { if (on) P.bs.sel[id] = 1; else delete P.bs.sel[id]; }); drawBank(); },
+  sdel: function (id) { var s = P.bs.all.filter(function (x) { return x.id === id; })[0]; if (s) soalHapus([id], '<b>' + esc(s.mapel) + '</b> — ' + esc(s.t.slice(0, 90))); },
+  bdelSel: function () { var ids = Object.keys(P.bs.sel); if (ids.length) soalHapus(ids, '<b>' + ids.length + ' soal terpilih</b>'); },
+  bcsv: function () { unduh('bank-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci']].concat(P.bs.all.map(function (s) { return [s.mapel, s.t, s.o.A, s.o.B, s.o.C, s.o.D, s.o.E, s.kunci]; }))); },
   kartu: kartu, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
   pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
   salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
