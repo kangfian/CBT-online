@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.8', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v2.9', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -15,6 +15,9 @@ function render(h) { app.innerHTML = h; window.scrollTo(0, 0); }
 function busy(on) { $('#bar').className = on ? 'on' : ''; }
 function toast(m, t) { var e = $('#toast'); e.textContent = m; e.className = 'on ' + (t || ''); clearTimeout(toast.t); toast.t = setTimeout(function () { e.className = ''; }, 3200); }
 function fmt(ms) { return new Date(ms).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB'; }
+function fmtTgl(ms) { return new Date(ms).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }); }
+function rentang(m, s) { var x = fmtTgl(m), y = fmtTgl(s); return x === y ? x : x + ' – ' + y; }
+function tglMs(v, akhir) { return Date.parse(v + (akhir ? 'T23:59:59+07:00' : 'T00:00:00+07:00')); } // tanggal saja: buka 00.00, tutup 23.59 WIB
 function mmss(ms) { var s = Math.max(0, Math.round(ms / 1000)); return ('0' + Math.floor(s / 60)).slice(-2) + ':' + ('0' + (s % 60)).slice(-2); }
 function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -77,12 +80,13 @@ function drawDash(skel) {
       x.s === 'berlangsung' ? '<button class="btn a w" onclick="App.buka(\'' + u.id + '\')">Lanjutkan Ujian</button>' :
       x.s === 'selesai' ? '<button class="btn w" disabled>Nilai: ' + esc(u.sesi.nilai) + ' / 100</button>' : '<button class="btn w" disabled>' + (x.s === 'belum' ? 'Ujian Belum Dibuka' : 'Ujian Ditutup') + '</button>';
     return '<div class="card ex ' + x.s + '"><div style="display:flex;justify-content:space-between;gap:8px"><span class="badge b-info">' + esc(u.mapel || 'Umum') + '</span><span class="badge ' + l[0] + '">' + l[1] + '</span></div>' +
-      '<h2>' + esc(u.judul) + '</h2><div class="meta">Jadwal: <b>' + fmt(u.mulai) + '</b><br>Batas: ' + fmt(u.selesai) + '<br>Durasi: <b>' + u.durasi + ' menit</b> · <b>' + u.jumlah + ' soal</b></div><div class="push">' + btn + '</div></div>';
+      '<h2>' + esc(u.judul) + '</h2><div class="meta">Tanggal: <b>' + rentang(u.mulai, u.selesai) + '</b><br>Durasi: <b>' + u.durasi + ' menit</b> · <b>' + u.jumlah + ' soal</b></div><div class="push">' + btn + '</div></div>';
   }).join('') : '<div class="card" style="grid-column:1/-1;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Ujian untuk kelas Anda akan muncul di sini.</p></div>';
-  var tab = function (k, t) { return '<button class="chip' + (S.filter === k ? ' on' : '') + '" onclick="App.filter(\'' + k + '\')">' + t + '</button>'; };
+  var CC = { semua: 'var(--primary)', tersedia: '#16A34A', mendatang: '#F59E0B', selesai: '#3B82F6' };
+  var tab = function (k, t) { return '<button class="chip' + (S.filter === k ? ' on' : '') + '" style="--cc:' + CC[k] + '" onclick="App.filter(\'' + k + '\')">' + t + '</button>'; };
   render(topbar() + '<main class="wrap"><div class="hero"><span class="pill xs">' + (n.tersedia + n.berlangsung ? n.tersedia + n.berlangsung + ' ujian aktif hari ini' : 'Tidak ada ujian aktif') + '</span><h1>Halo, ' + esc(S.me.nama) + '</h1><p>NIS: ' + esc(S.me.id) + ' • Kelas ' + esc(S.me.kelas) + '</p></div>' +
-    '<div class="grid g4"><div class="card stat"><span class="xs muted">Total ujian</span><b>' + L.length + ' Ujian</b></div><div class="card stat"><span class="xs muted">Perlu dikerjakan</span><b>' + (n.tersedia + n.berlangsung) + '</b></div>' +
-    '<div class="card stat"><span class="xs muted">Mendatang</span><b>' + n.belum + ' Terjadwal</b></div><div class="card stat"><span class="xs muted">Rata-rata nilai</span><b>' + (cnt ? (Math.round(tot / cnt * 10) / 10) + ' / 100' : '—') + '</b></div></div>' +
+    '<div class="grid g4"><div class="card stat" style="border-left:4px solid #6366F1"><span class="xs muted">Total ujian</span><b>' + L.length + ' Ujian</b></div><div class="card stat" style="border-left:4px solid #16A34A"><span class="xs muted">Perlu dikerjakan</span><b>' + (n.tersedia + n.berlangsung) + '</b></div>' +
+    '<div class="card stat" style="border-left:4px solid #F59E0B"><span class="xs muted">Mendatang</span><b>' + n.belum + ' Terjadwal</b></div><div class="card stat" style="border-left:4px solid #3B82F6"><span class="xs muted">Rata-rata nilai</span><b>' + (cnt ? (Math.round(tot / cnt * 10) / 10) + ' / 100' : '—') + '</b></div></div>' +
     '<div class="tabs">' + tab('semua', 'Semua (' + L.length + ')') + tab('tersedia', 'Tersedia (' + (n.tersedia + n.berlangsung) + ')') + tab('mendatang', 'Mendatang (' + n.belum + ')') + tab('selesai', 'Selesai (' + n.selesai + ')') +
     '<span class="sp"></span><input id="q" placeholder="Cari nama ujian..." value="' + esc(S.q) + '" style="max-width:240px"></div><div class="grid g3">' + cards + '</div>' +
     '<div class="note" style="margin-top:20px"><b>Tata tertib:</b> berpindah tab saat ujian akan tercatat. Pelanggaran ke-3 otomatis mengumpulkan ujian Anda.</div></main>');
@@ -318,15 +322,18 @@ function viewHasil(r, judul) {
 }
 
 /* ---------- PANEL GURU / ADMIN ---------- */
+var TC = { dash: ['#6366F1', '#3B82F6'], buat: ['#10B981', '#14B8A6'], pantau: ['#F97316', '#EF4444'], soal: ['#A855F7', '#EC4899'], laporan: ['#06B6D4', '#3B82F6'], siswa: ['#EC4899', '#F43F5E'], guru: ['#14B8A6', '#22C55E'] };
 function panel() {
-  var adm = S.me.role === 'admin', T = [['dash', 'Dashboard'], ['pantau', 'Pantau Ujian'], ['buat', 'Buat Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']].concat(adm ? [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']] : []);
-  render('<div class="shell"><nav class="side"><div class="brand">CBT Online<div class="xs" style="color:#adc8f5">' + (adm ? 'Admin' : 'Guru') + '</div></div>' +
-    T.map(function (t) { return '<button data-t="' + t[0] + '" class="' + (P.tab === t[0] ? 'on' : '') + '" onclick="App.tab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('') +
-    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button onclick="App.keluar()">Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()">🎨 Tema tampilan</button><button onclick="App.ganti()">🔑 Ganti Password</button><button onclick="App.keluar()">⎋ Keluar</button></div></div></div><div id="pc"></div></main></div>');
+  var adm = S.me.role === 'admin';
+  var G = [['', [['dash', 'Dashboard', '🏠']]], ['Ujian', [['buat', 'Buat Ujian', '📝'], ['pantau', 'Pantau Ujian', '📡'], ['soal', 'Bank Soal', '📚'], ['laporan', 'Laporan', '📊']]]].concat(adm ? [['Data', [['siswa', 'Kelola Siswa', '🎓'], ['guru', 'Kelola Guru', '🍎']]]] : []);
+  render('<div class="shell"><nav class="side"><div class="sbrand"><span class="lg">🎓</span><div><b>CBT Online</b><span>' + (adm ? 'Administrator' : 'Guru') + '</span></div></div>' +
+    G.map(function (g) { return (g[0] ? '<div class="sgrp">' + g[0] + '</div>' : '') + g[1].map(function (t) { return '<button class="mi' + (P.tab === t[0] ? ' on' : '') + '" data-t="' + t[0] + '" style="--c1:' + TC[t[0]][0] + ';--c2:' + TC[t[0]][1] + '" onclick="App.tab(\'' + t[0] + '\')"><span class="ic">' + t[2] + '</span>' + t[1] + '</button>'; }).join(''); }).join('') +
+    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button class="mi keluar" style="--c1:#EF4444;--c2:#F97316" onclick="App.keluar()"><span class="ic">⎋</span>Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()"><span class="ic" style="--c1:#8B5CF6;--c2:#EC4899">🎨</span>Tema tampilan</button><button onclick="App.ganti()"><span class="ic" style="--c1:#F59E0B;--c2:#F97316">🔑</span>Ganti Password</button><button onclick="App.keluar()"><span class="ic" style="--c1:#EF4444;--c2:#F43F5E">⎋</span>Keluar</button></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
-  clearInterval(P.iv); P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = b.dataset.t === t ? 'on' : ''; });
+  clearInterval(P.iv); P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = 'mi' + (b.dataset.t === t ? ' on' : ''); });
+  var mn = $('.main'); if (mn && mn.style && mn.style.setProperty && TC[t]) { mn.style.setProperty('--pg1', TC[t][0]); mn.style.setProperty('--pg2', TC[t][1]); }
   ({ dash: tDash, pantau: tPantau, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
 }
 function pc(h) { $('#pc').innerHTML = h; }
@@ -351,7 +358,7 @@ function drawAdmDash() {
   var live = d.ujian.filter(function (u) { return u.status !== 'selesai'; });
   var lc = live.length ? live.map(function (u) {
     var p = u.peserta || 1, B = u.status === 'berlangsung';
-    return '<div class="card"><div style="display:flex;gap:8px;justify-content:space-between"><span class="badge ' + (B ? 'b-ok' : 'b-info') + '">' + (B ? '● Berlangsung' : 'Terjadwal') + '</span><span class="sm muted">' + esc(u.kelas) + '</span></div><h3 style="margin:8px 0 2px">' + esc(u.judul) + '</h3><div class="sm muted">' + fmt(u.mulai) + ' – ' + fmt(u.selesai) + '</div>' +
+    return '<div class="card"><div style="display:flex;gap:8px;justify-content:space-between"><span class="badge ' + (B ? 'b-ok' : 'b-info') + '">' + (B ? '● Berlangsung' : 'Terjadwal') + '</span><span class="sm muted">' + esc(u.kelas) + '</span></div><h3 style="margin:8px 0 2px">' + esc(u.judul) + '</h3><div class="sm muted">' + rentang(u.mulai, u.selesai) + '</div>' +
       '<div class="prog"><i style="width:' + (u.dikumpulkan / p * 100) + '%;background:var(--ok)"></i><i style="width:' + (u.mengerjakan / p * 100) + '%;background:#3B82F6"></i></div>' +
       '<div class="sm" style="display:flex;justify-content:space-between"><span>' + u.dikumpulkan + ' selesai · ' + u.mengerjakan + ' mengerjakan · ' + Math.max(0, u.peserta - u.dikumpulkan - u.mengerjakan) + ' belum</span><span>' + u.pel + ' ⚠</span></div>' +
       '<button class="btn sm" style="margin-top:10px" onclick="App.pantauId(\'' + u.id + '\')">Pantau →</button></div>';
@@ -364,10 +371,10 @@ function drawAdmDash() {
   var lg = d.log.length ? d.log.map(function (l) { return '<div class="lg"><span class="dot"></span><div><b>' + esc(l.nama) + '</b> pindah tab<br><span class="muted">' + esc(l.ujian) + ' · ' + fmt(l.waktu) + '</span></div></div>'; }).join('') : '<p class="muted sm">Belum ada pelanggaran tercatat.</p>';
   var SB = { berlangsung: 'b-ok', terjadwal: 'b-info', selesai: 'b-mut' };
   var tb = d.ujian.length ? '<table><thead><tr><th>Ujian</th><th>Kelas</th><th>Jadwal</th><th>Status</th><th>Peserta</th><th>Selesai</th><th>Rata-rata</th><th>Pelanggaran</th><th></th></tr></thead><tbody>' + d.ujian.map(function (u) {
-    return '<tr><td><b>' + esc(u.judul) + '</b></td><td>' + esc(u.kelas) + '</td><td class="sm">' + fmt(u.mulai) + '</td><td><span class="badge ' + SB[u.status] + '">' + u.status + '</span></td><td>' + u.peserta + '</td><td>' + u.dikumpulkan + '</td><td>' + (u.rata == null ? '—' : u.rata) + '</td><td>' + (u.pel ? '<span class="badge b-bad">' + u.pel + 'x</span>' : '0') + '</td><td><button class="btn sm" onclick="App.pantauId(\'' + u.id + '\')">Pantau</button></td></tr>';
+    return '<tr><td><b>' + esc(u.judul) + '</b></td><td>' + esc(u.kelas) + '</td><td class="sm">' + fmtTgl(u.mulai) + '</td><td><span class="badge ' + SB[u.status] + '">' + u.status + '</span></td><td>' + u.peserta + '</td><td>' + u.dikumpulkan + '</td><td>' + (u.rata == null ? '—' : u.rata) + '</td><td>' + (u.pel ? '<span class="badge b-bad">' + u.pel + 'x</span>' : '0') + '</td><td><button class="btn sm" onclick="App.pantauId(\'' + u.id + '\')">Pantau</button></td></tr>';
   }).join('') + '</tbody></table>' : '<p class="muted">Belum ada ujian. Mulai dengan menambah soal lalu buat ujian.</p>';
   pc('<div id="dk"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><h1>Dashboard</h1><div class="muted sm">Pembaruan otomatis tiap 30 detik · terakhir ' + new Date(d.now).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</div></div><span class="sp" style="flex:1"></span>' +
-    '<button class="btn" onclick="App.tab(\'soal\')">+ Import Soal</button>' + (adm ? '<button class="btn" onclick="App.tab(\'siswa\')">+ Import Siswa</button>' : '') + '<button class="btn p" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>' +
+    '<button class="btn cg" style="--c1:#A855F7;--c2:#EC4899" onclick="App.tab(\'soal\')">+ Import Soal</button>' + (adm ? '<button class="btn cg" style="--c1:#F97316;--c2:#EF4444" onclick="App.tab(\'siswa\')">+ Import Siswa</button>' : '') + '<button class="btn cg" style="--c1:#10B981;--c2:#14B8A6" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>' +
     '<div class="grid g6" style="margin-top:18px">' + K + '</div>' +
     '<div class="sec"><h2>Ujian berlangsung &amp; terjadwal</h2></div><div class="grid g3">' + lc + '</div>' +
     '<div class="grid g23" style="margin-top:22px"><div class="card"><h2>Distribusi nilai</h2><p class="muted sm" style="margin:2px 0 8px">Seluruh ujian yang sudah dikumpulkan</p>' + chart + '</div><div class="card"><h2>Pelanggaran terbaru</h2><div style="margin-top:8px">' + lg + '</div></div></div>' +
@@ -408,7 +415,7 @@ function drawPantau() {
   var st = n < d.mulai ? ['b-info', 'Terjadwal'] : n > d.selesai ? ['b-mut', 'Waktu ujian berakhir'] : ['b-ok', '● Sedang berlangsung'], pct = function (v) { return tot ? v / tot * 100 : 0; };
   var kp = function (t, v, col, s) { return '<div class="card stat" style="border-left:4px solid ' + col + '"><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div>'; };
   $('#pk').innerHTML = '<div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:240px"><span class="badge ' + st[0] + '">' + st[1] + '</span><h2 style="margin:6px 0 2px">' + esc(d.judul) + '</h2>' +
-    '<div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal<br>' + fmt(d.mulai) + ' – ' + fmt(d.selesai) + '</div></div>' +
+    '<div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal<br>' + rentang(d.mulai, d.selesai) + '</div></div>' +
     '<div style="text-align:center"><div class="xs muted">Token ujian</div><div class="mono" style="font-size:28px;font-weight:700;letter-spacing:.25em">' + esc(d.token) + '</div><button class="btn sm" onclick="App.salinToken()">Salin token</button></div>' +
     '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div><div id="pkc"></div>' +
     '<div class="grid g4" style="margin-top:12px">' + kp('Total peserta', tot, '#1E3A5F', c.belum + ' belum mulai') + kp('Sedang mengerjakan', c.mengerjakan, '#3B82F6', 'saat ini') + kp('Sudah selesai', c.selesai, '#16A34A', Math.round(pct(c.selesai)) + '% peserta') + kp('Ada pelanggaran', c.pel, '#DC2626', 'siswa pindah tab') + '</div>' +
@@ -446,10 +453,11 @@ function tBuat() {
     var a = rs[0], b = rs[1]; if (!a.success || !b.success) return pc('<p class="err">' + esc((a.success ? b : a).message) + '</p>');
     P.soal = a.data; P.sel = {}; P.kls = {}; var M = b.data.mapel, KL = b.data.kelas;
     var d0 = new Date(Date.now() + 36e5), p2 = function (n) { return ('0' + n).slice(-2); }, loc = function (d) { return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + 'T' + p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+    var hari0 = new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10); // tanggal hari ini (WIB)
     pc('<h1>Buat Ujian</h1><form class="card" id="fb" style="margin-top:16px"><div class="grid g2"><label class="field"><span>Judul ujian *</span><input name="judul" required placeholder="mis. PAS Ganjil 2026"></label>' +
       '<label class="field"><span>Mata pelajaran *</span><select name="mapel" id="fm" required><option value="">— pilih mata pelajaran —</option>' + M.map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('') + '</select>' + (M.length ? '' : '<span class="err">Bank soal masih kosong. Import soal dulu.</span>') + '</label></div>' +
       '<div class="field"><span>Kelas peserta * <small class="muted">(klik untuk memilih, dari data siswa)</small></span><div style="display:flex;flex-wrap:wrap;gap:8px">' + (KL.length ? KL.map(function (k) { return '<button type="button" class="chip" data-k="' + esc(k) + '" onclick="App.kls(this)">' + esc(k) + '</button>'; }).join('') : '<span class="err">Belum ada data siswa. Import siswa dulu.</span>') + '</div></div>' +
-      '<div class="grid g3"><label class="field"><span>Durasi (menit) *</span><input name="durasi" type="number" min="1" value="90" required></label><label class="field"><span>Ujian dapat dimulai *</span><input name="mulai" type="datetime-local" value="' + loc(d0) + '" required></label><label class="field"><span>Ditutup pada *</span><input name="selesai" type="datetime-local" value="' + loc(new Date(d0.getTime() + 864e5)) + '" required></label></div>' +
+      '<div class="grid g3"><label class="field"><span>Durasi (menit) *</span><input name="durasi" type="number" min="1" value="45" required></label><label class="field"><span>Ujian dapat dimulai * <small class="muted">(buka 00.00)</small></span><input name="mulai" type="date" value="' + hari0 + '" required></label><label class="field"><span>Ditutup pada * <small class="muted">(tutup 23.59 WIB)</small></span><input name="selesai" type="date" value="' + hari0 + '" required></label></div>' +
       '<div class="field"><span>Pengumpulan jawaban oleh siswa</span><div class="grid g2" style="gap:10px"><select id="km"><option value="0">Boleh dikumpulkan kapan saja (tombol ada di soal terakhir)</option><option value="n">Kunci tombol kumpulkan selama N menit pertama</option><option value="-1">Tidak ada tombol — otomatis saat waktu habis</option></select><input id="kn" type="number" min="1" placeholder="N menit" class="hide"></div></div>' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px"><h3>Pilih soal <span class="badge b-info" id="cs">0 dipilih</span></h3><span style="flex:1"></span><button type="button" class="btn sm" onclick="App.pilSemua()">Pilih semua yang tampil</button><button type="button" class="btn sm" onclick="App.pilKosong()">Kosongkan</button></div>' +
       '<input id="fs" placeholder="Cari isi soal..." style="margin-bottom:10px"><div id="ls" style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px"></div>' +
@@ -457,10 +465,10 @@ function tBuat() {
     drawSoalPilih(); $('#fs').oninput = drawSoalPilih; $('#fm').onchange = function () { P.sel = {}; drawSoalPilih(); }; $('#km').onchange = function () { $('#kn').className = this.value === 'n' ? '' : 'hide'; };
     $('#fb').onsubmit = function (ev) {
       ev.preventDefault(); var f = ev.target, ids = Object.keys(P.sel), kl = Object.keys(P.kls), bt = $('button.p', f), e = $('#e');
-      if (!kl.length) { e.textContent = 'Pilih minimal satu kelas.'; return; } if (!ids.length) { e.textContent = 'Pilih minimal satu soal.'; return; }
+      if (!kl.length) { e.textContent = 'Pilih minimal satu kelas.'; return; } if (!ids.length) { e.textContent = 'Pilih minimal satu soal.'; return; } if (tglMs(f.selesai.value, true) < tglMs(f.mulai.value, false)) { e.textContent = 'Tanggal ditutup tidak boleh sebelum tanggal mulai.'; return; }
       var km = $('#km').value, kv = km === 'n' ? Number($('#kn').value) : Number(km); if (km === 'n' && !(kv > 0)) { e.textContent = 'Isi jumlah menit penguncian tombol kumpulkan.'; return; }
       bt.disabled = true;
-      Api.call('ujian.buat', { kumpul: kv, judul: f.judul.value, mapel: f.mapel.value, kelas: kl.join(', '), durasi: f.durasi.value, mulai: new Date(f.mulai.value).getTime(), selesai: new Date(f.selesai.value).getTime(), soal: ids }).then(function (r) {
+      Api.call('ujian.buat', { kumpul: kv, judul: f.judul.value, mapel: f.mapel.value, kelas: kl.join(', '), durasi: f.durasi.value, mulai: tglMs(f.mulai.value, false), selesai: tglMs(f.selesai.value, true), soal: ids }).then(function (r) {
         bt.disabled = false; if (!r.success) { e.textContent = r.message; return; }
         e.textContent = ''; toast('Ujian dibuat'); $('#hs').innerHTML = '<div class="note" style="text-align:center"><div class="xs muted">Token ujian — bagikan ke siswa saat ujian</div><div class="token mono" style="font-size:36px;font-weight:700;letter-spacing:.3em">' + esc(r.data.token) + '</div><button type="button" class="btn p" onclick="App.tab(\'pantau\')">Buka Pantau Ujian</button></div>';
       });
@@ -865,7 +873,7 @@ function cetakLap() {
   var idn = function (k, x) { return '<tr><td>' + k + '</td><td>: ' + x + '</td></tr>'; };
   var L = d.rekap.slice().sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
   var lv = { sulit: 0, sedang: 0, mudah: 0 }; d.analisis.forEach(function (x) { lv[x.benar < 30 ? 'sulit' : x.benar <= 70 ? 'sedang' : 'mudah']++; });
-  tampilCetak(kopHtml('Laporan Hasil Ujian') + '<table class="idn">' + idn('Nama ujian', esc(d.judul)) + idn('Mata pelajaran', esc(d.mapel || '-')) + idn('Kelas', esc(d.kelas)) + idn('Pelaksanaan', fmt(d.mulai)) + idn('Durasi / jumlah soal', d.durasi + ' menit / ' + d.jumlah + ' soal') + idn('KKM', kkm) + '</table>' +
+  tampilCetak(kopHtml('Laporan Hasil Ujian') + '<table class="idn">' + idn('Nama ujian', esc(d.judul)) + idn('Mata pelajaran', esc(d.mapel || '-')) + idn('Kelas', esc(d.kelas)) + idn('Pelaksanaan', rentang(d.mulai, d.selesai)) + idn('Durasi / jumlah soal', d.durasi + ' menit / ' + d.jumlah + ' soal') + idn('KKM', kkm) + '</table>' +
     '<h3 class="sb">A. Ringkasan Hasil</h3><table class="idn">' + idn('Jumlah peserta', d.rekap.length) + idn('Sudah mengumpulkan', done.length) + idn('Belum mengerjakan', d.rekap.length - done.length) + idn('Rata-rata nilai', rf1(avg)) + idn('Nilai tertinggi / terendah', rf1(v.length ? Math.max.apply(null, v) : null) + ' / ' + rf1(v.length ? Math.min.apply(null, v) : null)) +
     idn('Tuntas / belum tuntas', lulus + ' / ' + (done.length - lulus) + (done.length ? ' (' + Math.round(lulus / done.length * 100) + '% tuntas)' : '')) + idn('Pelanggaran tercatat', d.log.length + ' kejadian') + idn('Butir soal mudah / sedang / sulit', lv.mudah + ' / ' + lv.sedang + ' / ' + lv.sulit) + '</table>' +
     '<h3 class="sb">B. Daftar Nilai Peserta</h3><table class="tb"><thead><tr><th>No</th><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th>Nilai</th><th>Keterangan</th></tr></thead><tbody>' + L.map(function (x, i) {
