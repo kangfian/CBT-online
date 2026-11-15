@@ -114,9 +114,19 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);bo
 .kartu table{width:auto;font-size:12px}.kartu td{padding:1px 6px 1px 0;border:0;background:none!important}.kartu td:first-child{color:#555;width:62px}
 .kartu .pw{font:700 17px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em}.kartu .kf{margin-top:auto;font-size:9px;color:#444;line-height:12px}
 @page{size:A4;margin:0}
-@media print{body>*:not(#kartu){display:none!important}#kartu{position:static;background:#fff;overflow:visible;padding:0}.ktool{display:none}.halaman{margin:0;box-shadow:none;break-after:page;page-break-after:always}.halaman:last-child{break-after:auto;page-break-after:auto}}
+@media print{body>*:not(#kartu):not(#cetak){display:none!important}#kartu{position:static;background:#fff;overflow:visible;padding:0}.ktool{display:none}.halaman{margin:0;box-shadow:none;break-after:page;page-break-after:always}.halaman:last-child{break-after:auto;page-break-after:auto}}
 
 /* menu administrator */
 .mewrap{position:relative}button.me{font-family:inherit;color:var(--text);text-align:left;cursor:pointer}button.me:hover{background:var(--surface)}
 .umenu{position:absolute;right:0;top:calc(100% + 8px);min-width:230px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh2);padding:6px;z-index:30}
 .umenu button{display:flex;gap:10px;width:100%;text-align:left;border:0;background:none;padding:10px 12px;border-radius:8px;cursor:pointer;font-weight:500}.umenu button:hover{background:var(--surface)}
+
+/* laporan & rekap cetak */
+#cetak{position:fixed;inset:0;background:#e5e7eb;z-index:90;overflow:auto;padding-bottom:24px}
+.lembar{background:#fff;color:#000;width:210mm;min-height:297mm;margin:16px auto;padding:14mm;box-shadow:var(--sh2);font-size:12px;line-height:17px;page:lap}.lembar.land{width:297mm;min-height:210mm;page:rekap}
+.kopx{text-align:center;border-bottom:3px double #000;padding-bottom:8px}.kopx b{font-size:18px;text-transform:uppercase}.lembar h2.jdl{text-align:center;font-size:15px;margin:12px 0;text-transform:uppercase;letter-spacing:.05em;color:#000}.lembar .sb{font-size:13px;margin:14px 0 6px;color:#000}
+.lembar table{font-size:11.5px;width:100%}.lembar table.idn{width:auto}.lembar .idn td{border:0;padding:1px 8px 1px 0;background:none!important}.lembar .idn td:first-child{width:190px}
+.lembar table.tb th{background:#eee!important;color:#000;border:1px solid #444;padding:4px 6px;font-size:10.5px;text-transform:none;letter-spacing:0}.lembar table.tb td{border:1px solid #444;padding:3px 6px;background:none!important;color:#000}
+.lembar.land table.tb{font-size:10px}.bawah{text-decoration:underline}.ttd{display:flex;justify-content:space-around;margin-top:30px;text-align:center;break-inside:avoid}
+@page lap{size:A4 portrait;margin:14mm}@page rekap{size:A4 landscape;margin:12mm}
+@media print{#cetak{position:static;background:#fff;overflow:visible;padding:0}.lembar{margin:0;box-shadow:none;width:auto;min-height:0;padding:0}.lembar tr{break-inside:avoid}.lembar thead{display:table-header-group}}

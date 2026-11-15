@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.7', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v2.8', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -767,13 +767,20 @@ function histSvg(h) {
     return '<rect x="' + x + '" y="' + (150 - hh) + '" width="56" height="' + hh + '" rx="6" fill="' + col[i] + '"/><text x="' + (x + 28) + '" y="' + (144 - hh) + '" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--text)">' + v + '</text><text x="' + (x + 28) + '" y="174" text-anchor="middle" font-size="12" style="fill:var(--muted)">' + lab[i] + '</text>';
   }).join('') + '<line x1="10" y1="150" x2="390" y2="150" style="stroke:var(--line)"/></svg>';
 }
+function lm(h) { var e = $('#lm'); if (e) e.innerHTML = h; }
 function tLaporan() {
-  pc('<h1>Laporan</h1><div class="sk" style="margin-top:16px;min-height:160px"></div>');
+  P.lmode = P.lmode || 'ujian';
+  pc('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Laporan</h1><div class="muted sm">Laporan hasil ujian dan rekap nilai</div></div>' +
+    '<button class="chip' + (P.lmode === 'ujian' ? ' on' : '') + '" onclick="App.lmode(\'ujian\')">📄 Laporan Ujian</button><button class="chip' + (P.lmode === 'rekap' ? ' on' : '') + '" onclick="App.lmode(\'rekap\')">📊 Rekap Nilai</button></div><div id="lm" style="margin-top:16px"></div>');
+  if (P.lmode === 'rekap') tRekap(); else lapUjian();
+}
+function lapUjian() {
+  lm('<div class="sk" style="min-height:160px"></div>');
   Api.call('ujian.guru').then(function (r) {
-    if (P.tab !== 'laporan') return; if (!r.success) return pc('<h1>Laporan</h1><p class="err">' + esc(r.message) + '</p>');
-    if (!r.data.length) return pc('<h1>Laporan</h1><div class="card" style="margin-top:16px;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Laporan muncul setelah ujian dibuat dan dikerjakan.</p></div>');
+    if (P.tab !== 'laporan' || P.lmode !== 'ujian') return; if (!r.success) return lm('<p class="err">' + esc(r.message) + '</p>');
+    if (!r.data.length) return lm('<div class="card" style="margin-top:16px;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Laporan muncul setelah ujian dibuat dan dikerjakan.</p></div>');
     var n = Date.now(), kkm = Number(load('cbt_kkm')) || 75; P.kkm = kkm; P.lk = ''; P.lq = ''; P.lap = null; P.lsub = P.lsub || 'rekap';
-    pc('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Laporan</h1><div class="muted sm">Rekap nilai, analisis soal, dan pelanggaran</div></div>' +
+    lm('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:flex-end">' +
       '<label class="sm" style="display:flex;gap:8px;align-items:center">KKM <input id="kkm" type="number" min="0" max="100" value="' + kkm + '" style="width:80px"></label>' +
       '<select id="lu" style="max-width:400px"><option value="">— pilih ujian —</option>' + r.data.map(function (u) { var b = n >= u.mulai && n <= u.selesai ? '● ' : n < u.mulai ? '◷ ' : '✓ '; return '<option value="' + u.id + '">' + b + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select></div>' +
       '<div id="lp" style="margin-top:16px"><div class="card muted" style="text-align:center;padding:36px">Pilih ujian untuk melihat laporan.</div></div>');
@@ -785,6 +792,87 @@ function tLaporan() {
     $('#lu').value = r.data[0].id; $('#lu').onchange.call($('#lu'));
   });
 }
+/* ---------- REKAP NILAI GABUNGAN + CETAK ---------- */
+function tRekap() {
+  lm('<div class="sk" style="min-height:200px"></div>'); P.rk = P.rk || { kelas: '', mapel: '', q: '' }; P.kkm = P.kkm || Number(load('cbt_kkm')) || 75; muatRekap(true);
+}
+function muatRekap(awal) {
+  busy(true);
+  Api.call('laporan.rekap', { kelas: P.rk.kelas, mapel: P.rk.mapel }).then(function (r) {
+    busy(false); if (P.tab !== 'laporan' || P.lmode !== 'rekap') return;
+    if (!r.success) { lm('<p class="err">' + esc(r.message) + '</p>'); return; }
+    P.rd = r.data;
+    if (awal || !$('#rkp')) {
+      lm('<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><select id="rm" onchange="App.rkf(\'mapel\',this.value)" style="max-width:240px"></select><select id="rkl" onchange="App.rkf(\'kelas\',this.value)" style="max-width:180px"></select>' +
+        '<label class="sm" style="display:flex;gap:8px;align-items:center">KKM <input id="rkkm" type="number" min="0" max="100" value="' + P.kkm + '" style="width:80px"></label><input id="rq" placeholder="Cari nama / NIS..." value="' + esc(P.rk.q) + '" style="max-width:220px"><span style="flex:1"></span>' +
+        '<button class="btn" onclick="App.unduhRekap()">⬇ Unduh CSV (Excel)</button><button class="btn p" onclick="App.cetakRekap()">🖨 Cetak Rekap</button></div><div id="rkp" style="margin-top:12px"></div>');
+      $('#rkkm').oninput = function () { P.kkm = Math.max(0, Math.min(100, Number(this.value) || 0)); save('cbt_kkm', P.kkm); drawRekap(); };
+      $('#rq').oninput = function () { P.rk.q = this.value; drawRekap(); };
+    }
+    drawRekap();
+  });
+}
+function rf1(x) { return x == null ? '—' : String(Math.round(x * 10) / 10); }
+function rekapHitung() {
+  var d = P.rd, q = (P.rk.q || '').toLowerCase(), sum = function (v) { return v.reduce(function (a, b) { return a + b; }, 0); };
+  var rows = d.siswa.map(function (s) { var v = []; d.ujian.forEach(function (u) { if (s.n[u.id] != null) v.push(s.n[u.id]); }); return { s: s, n: v.length, avg: v.length ? sum(v) / v.length : null }; }), rk = {};
+  rows.filter(function (r) { return r.avg != null; }).sort(function (a, b) { return b.avg - a.avg; }).forEach(function (r, i, arr) { rk[r.s.nis] = i && r.avg === arr[i - 1].avg ? rk[arr[i - 1].s.nis] : i + 1; });
+  var col = d.ujian.map(function (u) { var v = []; rows.forEach(function (r) { if (r.s.n[u.id] != null) v.push(r.s.n[u.id]); }); return v.length ? sum(v) / v.length : null; });
+  return { rows: rows, F: rows.filter(function (r) { return !q || (r.s.nis + ' ' + r.s.nama).toLowerCase().indexOf(q) >= 0; }), rk: rk, col: col };
+}
+function rekapTabel(h, cetak) {
+  var d = P.rd, kkm = P.kkm, tg = function (ms) { return new Date(ms).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' }); };
+  if (!h.F.length) return '<p class="muted" style="padding:16px;text-align:center">Tidak ada data. Pastikan ada ujian dan siswa pada filter ini.</p>';
+  var cell = function (x) { if (x === undefined) return '<td class="muted" style="text-align:center">·</td>'; if (x === null) return '<td style="text-align:center">—</td>'; return '<td style="text-align:center">' + (cetak ? (x < kkm ? '<b class="bawah">' + rf1(x) + '</b>' : rf1(x)) : '<span class="badge ' + (x >= kkm ? 'b-ok' : 'b-bad') + '">' + rf1(x) + '</span>') + '</td>'; };
+  return '<table class="tb"><thead><tr><th>No</th><th>NIS</th><th>Nama</th><th>Kelas</th>' + d.ujian.map(function (u) { return '<th style="text-align:center;min-width:84px">' + esc(u.judul) + '<br><small>' + esc(u.mapel || '') + ' · ' + tg(u.mulai) + '</small></th>'; }).join('') + '<th>Rata-rata</th><th>Ket.</th><th>#</th></tr></thead><tbody>' +
+    h.F.map(function (r, i) {
+      return '<tr><td>' + (i + 1) + '</td><td class="mono">' + esc(r.s.nis) + '</td><td>' + esc(r.s.nama) + '</td><td>' + esc(r.s.kelas) + '</td>' + d.ujian.map(function (u) { return cell(r.s.n[u.id]); }).join('') +
+        '<td style="text-align:center"><b>' + rf1(r.avg) + '</b></td><td>' + (r.avg == null ? '—' : r.avg >= kkm ? 'Tuntas' : 'Remedial') + '</td><td style="text-align:center">' + (h.rk[r.s.nis] || '—') + '</td></tr>';
+    }).join('') + '<tr><td colspan="4" style="text-align:right"><b>Rata-rata per ujian</b></td>' + h.col.map(function (x) { return '<td style="text-align:center"><b>' + rf1(x) + '</b></td>'; }).join('') + '<td colspan="3"></td></tr></tbody></table>';
+}
+function drawRekap() {
+  var d = P.rd, h = rekapHitung(), avs = h.rows.filter(function (r) { return r.avg != null; }), kkm = P.kkm; P.rh = h;
+  $('#rm').innerHTML = '<option value="">Semua mata pelajaran</option>' + d.mapel.map(function (m) { return '<option' + (P.rk.mapel === m ? ' selected' : '') + '>' + esc(m) + '</option>'; }).join('');
+  $('#rkl').innerHTML = '<option value="">Semua kelas</option>' + d.kelas.map(function (k) { return '<option' + (P.rk.kelas === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
+  var kp = function (t, v, s, c) { return '<div class="card stat" style="border-left:4px solid ' + c + '"><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div>'; };
+  $('#rkp').innerHTML = '<div class="grid g4">' + kp('Ujian', d.ujian.length, 'pada filter ini', '#1E3A5F') + kp('Siswa', h.rows.length, 'terdaftar sebagai peserta', '#3B82F6') +
+    kp('Rata-rata keseluruhan', avs.length ? rf1(avs.reduce(function (a, r) { return a + r.avg; }, 0) / avs.length) : '—', 'rata-rata dari rata-rata siswa', '#16A34A') + kp('Perlu remedial', avs.filter(function (r) { return r.avg < kkm; }).length, 'rata-rata di bawah KKM ' + kkm, '#DC2626') + '</div>' +
+    '<div class="card" style="margin-top:12px"><div class="sm muted" style="margin-bottom:8px">Keterangan: <b>—</b> belum mengerjakan · <b>·</b> bukan peserta ujian tersebut · nilai merah di bawah KKM.</div><div class="tw">' + rekapTabel(h, false) + '</div></div>';
+}
+function csvRekap() {
+  var d = P.rd, h = P.rh, kkm = P.kkm, H = ['No', 'NIS', 'Nama', 'Kelas'].concat(d.ujian.map(function (u) { return u.judul + (u.mapel ? ' (' + u.mapel + ')' : ''); }), ['Rata-rata', 'Keterangan', 'Peringkat']);
+  return [H].concat(h.F.map(function (r, i) { return [i + 1, r.s.nis, r.s.nama, r.s.kelas].concat(d.ujian.map(function (u) { var x = r.s.n[u.id]; return x === undefined ? '' : x === null ? '-' : x; }), [r.avg == null ? '' : Math.round(r.avg * 10) / 10, r.avg == null ? '' : r.avg >= kkm ? 'Tuntas' : 'Remedial', h.rk[r.s.nis] || '']); }));
+}
+function tampilCetak(html, land) {
+  var o = $('#cetak'); if (o) o.remove(); o = document.createElement('div'); o.id = 'cetak';
+  o.innerHTML = '<div class="ktool"><b>Pratinjau cetak</b><span class="muted sm">' + (land ? 'A4 lanskap' : 'A4 potret') + ' · pilih "Simpan sebagai PDF" pada dialog cetak untuk membuat berkas</span><span style="flex:1"></span><button class="btn p" onclick="window.print()">🖨 Cetak / Simpan PDF</button><button class="btn" onclick="document.getElementById(\'cetak\').remove()">Tutup</button></div><div class="lembar' + (land ? ' land' : '') + '">' + html + '</div>';
+  document.body.appendChild(o);
+}
+function kopHtml(judul) { return '<div class="kopx"><b>' + esc(CFG.NAMA_SEKOLAH) + '</b>' + (CFG.ALAMAT_SEKOLAH ? '<div>' + esc(CFG.ALAMAT_SEKOLAH) + '</div>' : '') + '</div><h2 class="jdl">' + judul + '</h2>'; }
+function ttdHtml(guru, peran) {
+  var tgl = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+  return '<div class="ttd"><div>Mengetahui,<br>Kepala Sekolah<br><br><br><br><u>' + esc(CFG.KEPALA_SEKOLAH || '(................................)') + '</u></div><div>' + (CFG.KOTA ? esc(CFG.KOTA) + ', ' : '') + tgl + '<br>' + peran + '<br><br><br><br><u>' + esc(guru || '(................................)') + '</u></div></div>';
+}
+function cetakRekap() {
+  var d = P.rd, h = P.rh, kkm = P.kkm; if (!d || !h) return;
+  var idn = function (k, v) { return '<tr><td>' + k + '</td><td>: ' + v + '</td></tr>'; }, adm = S.me.role === 'admin';
+  tampilCetak(kopHtml('Rekap Nilai Siswa') + '<table class="idn">' + idn('Mata pelajaran', esc(P.rk.mapel || 'Semua')) + idn('Kelas', esc(P.rk.kelas || 'Semua')) + idn('Jumlah ujian', d.ujian.length) + idn('KKM', kkm) + idn('Dicetak', fmt(Date.now())) + '</table><div style="margin-top:10px">' + rekapTabel(h, true) + '</div>' +
+    '<p style="font-size:10px;margin:6px 0 0">Keterangan: — belum mengerjakan; · bukan peserta; <b class="bawah">nilai tebal bergaris</b> di bawah KKM.</p>' + ttdHtml(adm ? '' : S.me.nama, adm ? 'Administrator' : 'Guru Mata Pelajaran'), true);
+}
+function cetakLap() {
+  var d = P.lap, kkm = P.kkm; if (!d) return;
+  var done = d.rekap.filter(function (x) { return x.nilai != null; }), v = done.map(function (x) { return x.nilai; }), lulus = v.filter(function (x) { return x >= kkm; }).length, avg = v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : null;
+  var idn = function (k, x) { return '<tr><td>' + k + '</td><td>: ' + x + '</td></tr>'; };
+  var L = d.rekap.slice().sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
+  var lv = { sulit: 0, sedang: 0, mudah: 0 }; d.analisis.forEach(function (x) { lv[x.benar < 30 ? 'sulit' : x.benar <= 70 ? 'sedang' : 'mudah']++; });
+  tampilCetak(kopHtml('Laporan Hasil Ujian') + '<table class="idn">' + idn('Nama ujian', esc(d.judul)) + idn('Mata pelajaran', esc(d.mapel || '-')) + idn('Kelas', esc(d.kelas)) + idn('Pelaksanaan', fmt(d.mulai)) + idn('Durasi / jumlah soal', d.durasi + ' menit / ' + d.jumlah + ' soal') + idn('KKM', kkm) + '</table>' +
+    '<h3 class="sb">A. Ringkasan Hasil</h3><table class="idn">' + idn('Jumlah peserta', d.rekap.length) + idn('Sudah mengumpulkan', done.length) + idn('Belum mengerjakan', d.rekap.length - done.length) + idn('Rata-rata nilai', rf1(avg)) + idn('Nilai tertinggi / terendah', rf1(v.length ? Math.max.apply(null, v) : null) + ' / ' + rf1(v.length ? Math.min.apply(null, v) : null)) +
+    idn('Tuntas / belum tuntas', lulus + ' / ' + (done.length - lulus) + (done.length ? ' (' + Math.round(lulus / done.length * 100) + '% tuntas)' : '')) + idn('Pelanggaran tercatat', d.log.length + ' kejadian') + idn('Butir soal mudah / sedang / sulit', lv.mudah + ' / ' + lv.sedang + ' / ' + lv.sulit) + '</table>' +
+    '<h3 class="sb">B. Daftar Nilai Peserta</h3><table class="tb"><thead><tr><th>No</th><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th>Nilai</th><th>Keterangan</th></tr></thead><tbody>' + L.map(function (x, i) {
+      return '<tr><td>' + (i + 1) + '</td><td class="mono">' + esc(x.nis) + '</td><td>' + esc(x.nama) + '</td><td>' + esc(x.kelas) + '</td><td>' + esc(STL[x.status] || x.status) + '</td><td style="text-align:center">' + (x.nilai == null ? '—' : (x.nilai < kkm ? '<b class="bawah">' + esc(x.nilai) + '</b>' : esc(x.nilai))) + '</td><td>' + (x.nilai == null ? '—' : x.nilai >= kkm ? 'Tuntas' : 'Belum tuntas') + '</td></tr>';
+    }).join('') + '</tbody></table>' + ttdHtml(d.guru, 'Guru Mata Pelajaran'), false);
+}
+
 var STL = { belum: 'Belum mulai', berlangsung: 'Mengerjakan', dikumpulkan: 'Selesai', 'dikumpulkan-otomatis': 'Otomatis' };
 function lapRekap() {
   var d = P.lap, kkm = P.kkm, done = d.rekap.filter(function (x) { return x.nilai != null; }), rk = {};
@@ -832,7 +920,7 @@ function drawLap() {
         return '<tr><td class="sm">' + fmt(l.waktu) + '</td><td>' + esc(l.nama) + '</td><td><span class="badge ' + (l.jenis === 'keluar_fullscreen' ? 'b-info' : 'b-warn') + '">' + (l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab') + '</span></td></tr>';
       }).join('') + '</tbody></table>' : '<p class="muted">Tidak ada kejadian.</p>') + '</div></div></div>';
   }
-  $('#lp').innerHTML = '<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><b>' + esc(d.judul) + '</b><div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal · ' + d.durasi + ' menit</div></div><button class="btn" onclick="App.unduhLap()">⬇ Unduh CSV (Excel)</button></div><div style="margin-top:12px">' + KP + '</div><div class="tabs" style="margin-bottom:0">' + tabs + '</div>' + body;
+  $('#lp').innerHTML = '<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><b>' + esc(d.judul) + '</b><div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal · ' + d.durasi + ' menit</div></div><button class="btn" onclick="App.unduhLap()">⬇ Unduh CSV (Excel)</button><button class="btn p" onclick="App.cetakLap()">🖨 Cetak Laporan</button></div><div style="margin-top:12px">' + KP + '</div><div class="tabs" style="margin-bottom:0">' + tabs + '</div>' + body;
   if (s === 'rekap') { drawLapTabel(); $('#lq').oninput = function () { P.lq = this.value; drawLapTabel(); }; }
 }
 
@@ -845,6 +933,8 @@ window.App = {
   konfirmasi: konfirmasi, kumpul: function () { kumpul(false); }, tab: tab, muat: function () { muatPantau(); },
   pil: function (id, on) { if (on) P.sel[id] = 1; else delete P.sel[id]; $('#cs').textContent = Object.keys(P.sel).length + ' dipilih'; },
   lsub: function (k) { P.lsub = k; drawLap(); }, lkelas: function (k) { P.lk = k; drawLap(); }, unduhLap: function () { unduh('laporan-' + (P.lsub || 'rekap') + '-' + String(P.lap.judul).replace(/\W+/g, '-') + '.csv', P.lcsv); },
+  lmode: function (m) { P.lmode = m; tLaporan(); }, rkf: function (k, v) { P.rk[k] = v; muatRekap(); }, cetakLap: cetakLap, cetakRekap: cetakRekap,
+  unduhRekap: function () { if (P.rd) unduh('rekap-nilai.csv', csvRekap()); },
   menu: function (ev) { ev.stopPropagation(); var m = $('#um'); m.className = m.className.indexOf('hide') >= 0 ? 'umenu' : 'umenu hide'; }, ganti: gantiPw,
   gf: guruForm, gpw: guruPw, ghapus: guruHapus,
   pks: function () { $('#pkn').className = $('#pks').value === 'n' ? '' : 'hide'; },
