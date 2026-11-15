@@ -2,7 +2,7 @@
 // URL ini bukan rahasia. Jangan menaruh token/password apa pun di sini.
 window.APP_CONFIG = {
   GAS_URL: 'https://script.google.com/macros/s/AKfycbx5cJL2zChC3NslOfQO3Q42pFuCbffXMLqU7T4dCZZeso2WDqOpiWbbbH4Y5JURDnw/exec',
-  NAMA_SEKOLAH: 'SMK SPP Putra Jaya',
+  NAMA_SEKOLAH: 'Nama Sekolah Anda',
   ALAMAT_SEKOLAH: '', // opsional, tampil di kop laporan cetak
   KOTA: '',           // opsional, mis. 'Medan' (untuk tanggal & tanda tangan)
   KEPALA_SEKOLAH: '', // opsional, nama pada kolom tanda tangan

@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.9', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v2.10', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -82,11 +82,10 @@ function drawDash(skel) {
     return '<div class="card ex ' + x.s + '"><div style="display:flex;justify-content:space-between;gap:8px"><span class="badge b-info">' + esc(u.mapel || 'Umum') + '</span><span class="badge ' + l[0] + '">' + l[1] + '</span></div>' +
       '<h2>' + esc(u.judul) + '</h2><div class="meta">Tanggal: <b>' + rentang(u.mulai, u.selesai) + '</b><br>Durasi: <b>' + u.durasi + ' menit</b> · <b>' + u.jumlah + ' soal</b></div><div class="push">' + btn + '</div></div>';
   }).join('') : '<div class="card" style="grid-column:1/-1;text-align:center;padding:40px"><h2>Belum ada ujian</h2><p class="muted">Ujian untuk kelas Anda akan muncul di sini.</p></div>';
-  var CC = { semua: 'var(--primary)', tersedia: '#16A34A', mendatang: '#F59E0B', selesai: '#3B82F6' };
-  var tab = function (k, t) { return '<button class="chip' + (S.filter === k ? ' on' : '') + '" style="--cc:' + CC[k] + '" onclick="App.filter(\'' + k + '\')">' + t + '</button>'; };
+  var tab = function (k, t) { return '<button class="chip' + (S.filter === k ? ' on' : '') + '" onclick="App.filter(\'' + k + '\')">' + t + '</button>'; };
   render(topbar() + '<main class="wrap"><div class="hero"><span class="pill xs">' + (n.tersedia + n.berlangsung ? n.tersedia + n.berlangsung + ' ujian aktif hari ini' : 'Tidak ada ujian aktif') + '</span><h1>Halo, ' + esc(S.me.nama) + '</h1><p>NIS: ' + esc(S.me.id) + ' • Kelas ' + esc(S.me.kelas) + '</p></div>' +
-    '<div class="grid g4"><div class="card stat" style="border-left:4px solid #6366F1"><span class="xs muted">Total ujian</span><b>' + L.length + ' Ujian</b></div><div class="card stat" style="border-left:4px solid #16A34A"><span class="xs muted">Perlu dikerjakan</span><b>' + (n.tersedia + n.berlangsung) + '</b></div>' +
-    '<div class="card stat" style="border-left:4px solid #F59E0B"><span class="xs muted">Mendatang</span><b>' + n.belum + ' Terjadwal</b></div><div class="card stat" style="border-left:4px solid #3B82F6"><span class="xs muted">Rata-rata nilai</span><b>' + (cnt ? (Math.round(tot / cnt * 10) / 10) + ' / 100' : '—') + '</b></div></div>' +
+    '<div class="grid g4"><div class="card stat"><span class="xs muted">Total ujian</span><b>' + L.length + ' Ujian</b></div><div class="card stat"><span class="xs muted">Perlu dikerjakan</span><b>' + (n.tersedia + n.berlangsung) + '</b></div>' +
+    '<div class="card stat"><span class="xs muted">Mendatang</span><b>' + n.belum + ' Terjadwal</b></div><div class="card stat"><span class="xs muted">Rata-rata nilai</span><b>' + (cnt ? (Math.round(tot / cnt * 10) / 10) + ' / 100' : '—') + '</b></div></div>' +
     '<div class="tabs">' + tab('semua', 'Semua (' + L.length + ')') + tab('tersedia', 'Tersedia (' + (n.tersedia + n.berlangsung) + ')') + tab('mendatang', 'Mendatang (' + n.belum + ')') + tab('selesai', 'Selesai (' + n.selesai + ')') +
     '<span class="sp"></span><input id="q" placeholder="Cari nama ujian..." value="' + esc(S.q) + '" style="max-width:240px"></div><div class="grid g3">' + cards + '</div>' +
     '<div class="note" style="margin-top:20px"><b>Tata tertib:</b> berpindah tab saat ujian akan tercatat. Pelanggaran ke-3 otomatis mengumpulkan ujian Anda.</div></main>');
@@ -322,18 +321,29 @@ function viewHasil(r, judul) {
 }
 
 /* ---------- PANEL GURU / ADMIN ---------- */
-var TC = { dash: ['#6366F1', '#3B82F6'], buat: ['#10B981', '#14B8A6'], pantau: ['#F97316', '#EF4444'], soal: ['#A855F7', '#EC4899'], laporan: ['#06B6D4', '#3B82F6'], siswa: ['#EC4899', '#F43F5E'], guru: ['#14B8A6', '#22C55E'] };
+var ICO = {
+  dash: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  buat: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15h6"/>',
+  pantau: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  soal: '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/>',
+  laporan: '<path d="M3 3v18h18"/><path d="M8 17V9M13 17V5M18 17v-6"/>',
+  siswa: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  guru: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/>',
+  tema: '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.15-.8-.4-1-.25-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5-4.5-9-10-9z"/><circle cx="7.5" cy="11" r="1"/><circle cx="12" cy="7" r="1"/><circle cx="16.5" cy="10" r="1"/>',
+  kunci: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  keluar: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'
+};
+function ico(n) { return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICO[n] + '</svg>'; }
 function panel() {
   var adm = S.me.role === 'admin';
-  var G = [['', [['dash', 'Dashboard', '🏠']]], ['Ujian', [['buat', 'Buat Ujian', '📝'], ['pantau', 'Pantau Ujian', '📡'], ['soal', 'Bank Soal', '📚'], ['laporan', 'Laporan', '📊']]]].concat(adm ? [['Data', [['siswa', 'Kelola Siswa', '🎓'], ['guru', 'Kelola Guru', '🍎']]]] : []);
-  render('<div class="shell"><nav class="side"><div class="sbrand"><span class="lg">🎓</span><div><b>CBT Online</b><span>' + (adm ? 'Administrator' : 'Guru') + '</span></div></div>' +
-    G.map(function (g) { return (g[0] ? '<div class="sgrp">' + g[0] + '</div>' : '') + g[1].map(function (t) { return '<button class="mi' + (P.tab === t[0] ? ' on' : '') + '" data-t="' + t[0] + '" style="--c1:' + TC[t[0]][0] + ';--c2:' + TC[t[0]][1] + '" onclick="App.tab(\'' + t[0] + '\')"><span class="ic">' + t[2] + '</span>' + t[1] + '</button>'; }).join(''); }).join('') +
-    '<span class="sp"></span><div class="xs" style="color:#adc8f5;padding:0 12px 6px">Versi ' + VER + '</div><button class="mi keluar" style="--c1:#EF4444;--c2:#F97316" onclick="App.keluar()"><span class="ic">⎋</span>Keluar</button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()"><span class="ic" style="--c1:#8B5CF6;--c2:#EC4899">🎨</span>Tema tampilan</button><button onclick="App.ganti()"><span class="ic" style="--c1:#F59E0B;--c2:#F97316">🔑</span>Ganti Password</button><button onclick="App.keluar()"><span class="ic" style="--c1:#EF4444;--c2:#F43F5E">⎋</span>Keluar</button></div></div></div><div id="pc"></div></main></div>');
+  var G = [['', [['dash', 'Dashboard']]], ['Ujian', [['buat', 'Buat Ujian'], ['pantau', 'Pantau Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']]]].concat(adm ? [['Data', [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']]]] : []);
+  render('<div class="shell"><nav class="side"><div class="brand">CBT Online<small>' + (adm ? 'Administrator' : 'Guru') + '</small></div>' +
+    G.map(function (g) { return (g[0] ? '<div class="sgrp">' + g[0] + '</div>' : '') + g[1].map(function (t) { return '<button class="mi' + (P.tab === t[0] ? ' on' : '') + '" data-t="' + t[0] + '" onclick="App.tab(\'' + t[0] + '\')">' + ico(t[0]) + '<span>' + t[1] + '</span></button>'; }).join(''); }).join('') +
+    '<span class="sp"></span><div class="xs" style="color:rgba(255,255,255,.45);padding:0 12px 8px">Versi ' + VER + '</div><button class="mi" onclick="App.keluar()">' + ico('keluar') + '<span>Keluar</span></button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()">' + ico('tema') + 'Tema tampilan</button><button onclick="App.ganti()">' + ico('kunci') + 'Ganti Password</button><button onclick="App.keluar()">' + ico('keluar') + 'Keluar</button></div></div></div><div id="pc"></div></main></div>');
   tab(P.tab);
 }
 function tab(t) {
   clearInterval(P.iv); P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = 'mi' + (b.dataset.t === t ? ' on' : ''); });
-  var mn = $('.main'); if (mn && mn.style && mn.style.setProperty && TC[t]) { mn.style.setProperty('--pg1', TC[t][0]); mn.style.setProperty('--pg2', TC[t][1]); }
   ({ dash: tDash, pantau: tPantau, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
 }
 function pc(h) { $('#pc').innerHTML = h; }
@@ -374,7 +384,7 @@ function drawAdmDash() {
     return '<tr><td><b>' + esc(u.judul) + '</b></td><td>' + esc(u.kelas) + '</td><td class="sm">' + fmtTgl(u.mulai) + '</td><td><span class="badge ' + SB[u.status] + '">' + u.status + '</span></td><td>' + u.peserta + '</td><td>' + u.dikumpulkan + '</td><td>' + (u.rata == null ? '—' : u.rata) + '</td><td>' + (u.pel ? '<span class="badge b-bad">' + u.pel + 'x</span>' : '0') + '</td><td><button class="btn sm" onclick="App.pantauId(\'' + u.id + '\')">Pantau</button></td></tr>';
   }).join('') + '</tbody></table>' : '<p class="muted">Belum ada ujian. Mulai dengan menambah soal lalu buat ujian.</p>';
   pc('<div id="dk"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><h1>Dashboard</h1><div class="muted sm">Pembaruan otomatis tiap 30 detik · terakhir ' + new Date(d.now).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</div></div><span class="sp" style="flex:1"></span>' +
-    '<button class="btn cg" style="--c1:#A855F7;--c2:#EC4899" onclick="App.tab(\'soal\')">+ Import Soal</button>' + (adm ? '<button class="btn cg" style="--c1:#F97316;--c2:#EF4444" onclick="App.tab(\'siswa\')">+ Import Siswa</button>' : '') + '<button class="btn cg" style="--c1:#10B981;--c2:#14B8A6" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>' +
+    '<button class="btn" onclick="App.tab(\'soal\')">+ Import Soal</button>' + (adm ? '<button class="btn" onclick="App.tab(\'siswa\')">+ Import Siswa</button>' : '') + '<button class="btn p" onclick="App.tab(\'buat\')">+ Buat Ujian</button></div>' +
     '<div class="grid g6" style="margin-top:18px">' + K + '</div>' +
     '<div class="sec"><h2>Ujian berlangsung &amp; terjadwal</h2></div><div class="grid g3">' + lc + '</div>' +
     '<div class="grid g23" style="margin-top:22px"><div class="card"><h2>Distribusi nilai</h2><p class="muted sm" style="margin:2px 0 8px">Seluruh ujian yang sudah dikumpulkan</p>' + chart + '</div><div class="card"><h2>Pelanggaran terbaru</h2><div style="margin-top:8px">' + lg + '</div></div></div>' +
