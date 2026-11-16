@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v2.10', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v3.0', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -29,24 +29,27 @@ function topbar() {
 
 /* ---------- LOGIN ---------- */
 function viewLogin(msg) {
-  var st = MODE === 'staf', tgl = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
-  var logo = CFG.LOGO ? '<img src="' + esc(CFG.LOGO) + '" alt="" style="width:44px;height:44px;border-radius:12px;object-fit:cover">' : '<span class="lg2-logo">🎓</span>';
-  var F = st ? [['📚', 'Bank soal terkelola', 'Import, edit, dan kelompokkan soal per mata pelajaran'], ['📡', 'Pantau langsung', 'Lihat progres dan pelanggaran siswa saat ujian'], ['📊', 'Laporan otomatis', 'Rekap nilai dan analisis soal siap unduh']] :
-    [['⏱', 'Timer akurat', 'Waktu dihitung dari server, adil untuk semua'], ['⚡', 'Nilai langsung', 'Hasil muncul begitu ujian dikumpulkan'], ['🛡', 'Aman & terawasi', 'Jawaban tersimpan otomatis dan ujian terpantau']];
-  render('<div class="lg2"><button class="tbtn" onclick="App.tema()">🎨 Tema</button><section class="lg2-hero"><i class="sh s1"></i><i class="sh s2"></i><i class="sh s3"></i>' +
-    '<div class="lg2-brand">' + logo + '<span>CBT Online</span></div><h1>' + (st ? 'Kelola ujian sekolah dalam satu tempat' : 'Ujian digital yang adil, cepat, dan terpercaya') + '</h1><p>' + esc(CFG.NAMA_SEKOLAH) + '</p>' +
-    '<ul class="lg2-feat">' + F.map(function (f) { return '<li><i>' + f[0] + '</i><div><b>' + f[1] + '</b><span>' + f[2] + '</span></div></li>'; }).join('') + '</ul><div class="lg2-foot">' + esc(tgl) + '</div></section>' +
-    '<section class="lg2-form"><form class="lg2-card" id="f"><div class="lg2-ava">' + (st ? '🛠️' : '🎓') + '</div><h2>' + (st ? 'Portal Admin &amp; Guru' : 'Selamat datang') + '</h2><p class="muted" style="margin:4px 0 20px">' + (st ? 'Masuk dengan username dan password akun Anda' : 'Masuk dengan NIS dan password pada kartu ujianmu') + '</p>' +
-    '<label class="field"><span>' + (st ? 'Username' : 'NIS') + '</span><div class="inp"><b>👤</b><input id="id" autocomplete="username" required placeholder="' + (st ? 'username' : 'Nomor Induk Siswa') + '"></div></label>' +
-    '<label class="field"><span>Password</span><div class="inp"><b>🔒</b><input id="pw" type="password" autocomplete="current-password" required placeholder="Password"><button type="button" class="eye" onclick="App.lihat()" aria-label="Tampilkan password">👁</button></div></label>' +
-    '<div class="err" id="e">' + esc(msg || (Api.siap ? '' : 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.')) + '</div><button class="btn p w lgb">Masuk →</button>' +
-    '<p class="sm" style="text-align:center;margin:18px 0 0">' + (st ? '<a href="index.html">← Halaman login siswa</a>' : '<a href="admin.html">Admin / Guru? Masuk di sini</a><br><span class="muted">Lupa password? Tanyakan ke pengawas ujian.</span>') + '</p></form></section></div>');
+  var st = MODE === 'staf', fl = ''; try { fl = sessionStorage.getItem('cbt_flash') || ''; sessionStorage.removeItem('cbt_flash'); } catch (e) {}
+  var logo = CFG.LOGO ? '<img src="' + esc(CFG.LOGO) + '" alt="" style="width:40px;height:40px;border-radius:10px;object-fit:cover">' : '<span class="lg2-logo">' + ico('shield') + '</span>';
+  var F = st ? [['soal', 'Bank soal terkelola', 'Kelompokkan soal per mata pelajaran, import dari Excel atau CSV.'], ['pantau', 'Pemantauan langsung', 'Pantau progres dan pelanggaran peserta selama ujian berlangsung.'], ['laporan', 'Laporan dan rekap nilai', 'Rekap per kelas, analisis butir soal, dan cetak laporan resmi.']] :
+    [['clock', 'Waktu dihitung server', 'Durasi pengerjaan akurat dan adil untuk semua peserta.'], ['zap', 'Hasil langsung', 'Nilai tampil begitu ujian selesai dikumpulkan.'], ['shield', 'Ujian terpantau', 'Jawaban tersimpan otomatis dan aktivitas selama ujian dicatat.']];
+  render('<div class="lg2"><button class="tbtn" onclick="App.tema()">' + ico('tema') + 'Tema</button>' +
+    '<section class="lg2-hero"><div class="lg2-brand">' + logo + '<span>' + esc(CFG.NAMA_SEKOLAH) + '</span></div><div class="lg2-main"><h1>' + (st ? 'Portal Admin dan Guru' : 'Ujian Berbasis Komputer') + '</h1>' +
+    '<p class="sub">' + (st ? 'Kelola bank soal, jadwal ujian, pemantauan peserta, dan laporan hasil dalam satu tempat.' : 'Kerjakan ujian secara online dengan aman. Pastikan koneksi internet stabil sebelum memulai.') + '</p>' +
+    '<ul class="lg2-feat">' + F.map(function (f) { return '<li><span class="fi">' + ico(f[0]) + '</span><div><b>' + f[1] + '</b><span>' + f[2] + '</span></div></li>'; }).join('') + '</ul></div>' +
+    '<div class="lg2-foot">© ' + new Date().getFullYear() + ' ' + esc(CFG.NAMA_SEKOLAH) + '</div></section>' +
+    '<section class="lg2-form"><form class="lg2-card" id="f"><h2>' + (st ? 'Masuk ke Portal' : 'Masuk ke Akun Anda') + '</h2><p class="lead">' + (st ? 'Gunakan username dan password akun Anda.' : 'Gunakan NIS dan password yang tertera pada kartu ujian.') + '</p>' +
+    (fl ? '<div class="lg2-note">' + ico('info') + '<div>' + esc(fl) + '</div></div>' : '') +
+    '<label class="field"><span>' + (st ? 'Username' : 'NIS') + '</span><div class="inp">' + ico('user') + '<input id="id" autocomplete="username" required placeholder="' + (st ? 'Username' : 'Nomor Induk Siswa') + '"></div></label>' +
+    '<label class="field"><span>Password</span><div class="inp">' + ico('kunci') + '<input id="pw" type="password" autocomplete="current-password" required placeholder="Password"><button type="button" class="eye" onclick="App.lihat()" aria-label="Tampilkan password">' + ico('eye') + '</button></div></label>' +
+    '<div class="err" id="e">' + esc(msg || (Api.siap ? '' : 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.')) + '</div><button class="btn p w lgb">Masuk</button>' +
+    '<div class="lg2-help">' + (st ? '<a href="index.html">Kembali ke halaman login siswa</a>' : 'Satu akun hanya dapat digunakan di satu perangkat. Jika Anda terlempar dari aplikasi saat ujian, minta pengawas untuk mereset login Anda.<br><a href="admin.html">Masuk sebagai admin atau guru</a>') + '</div></form></section></div>');
   $('#f').onsubmit = function (ev) {
     ev.preventDefault(); var b = $('button.lgb', this); b.disabled = true; b.textContent = 'Memeriksa...'; busy(true);
     Api.call('login', { id: $('#id').value, password: $('#pw').value, tipe: MODE }).then(function (r) {
       busy(false);
       if (r.success) { Sesi.simpan({ token: r.data.token, me: r.data.me }); S.me = r.data.me; masuk(); }
-      else { b.disabled = false; b.textContent = 'Masuk →'; $('#e').textContent = r.message; }
+      else { b.disabled = false; b.textContent = 'Masuk'; $('#e').textContent = r.message; }
     });
   };
 }
@@ -252,7 +255,7 @@ function flush() {
   var snap = {}; ks.forEach(function (i) { snap[i] = X.unsent[i]; }); X.fl = true; setSync('Menyimpan...', 'wait');
   return Api.call('jawaban.simpan', { idSesi: X.id, jawaban: snap }).then(function (r) {
     X.fl = false;
-    if (r.success) { ks.forEach(function (i) { if (X.unsent[i] === snap[i]) delete X.unsent[i]; }); setSync('Tersimpan', 'ok'); if (r.data && r.data.nilai !== undefined) { tamat(r.data); return true; } if (X && r.data && r.data.kumpul !== undefined && r.data.kumpul !== X.ks) { X.ks = r.data.kumpul; drawQ(); } return true; }
+    if (r.success) { ks.forEach(function (i) { if (X.unsent[i] === snap[i]) delete X.unsent[i]; }); setSync('Tersimpan', 'ok'); if (r.data && r.data.nilai !== undefined) { tamat(r.data); return true; } if (X && r.data && r.data.batas) X.batas = r.data.batas; if (X && r.data && r.data.kumpul !== undefined && r.data.kumpul !== X.ks) { X.ks = r.data.kumpul; drawQ(); } return true; }
     if (r.code === 'SELESAI') { kumpul(true); return true; }
     setSync(r.offline ? 'Offline — aman di perangkat' : 'Gagal menyimpan', 'bad'); return false;
   });
@@ -331,7 +334,13 @@ var ICO = {
   guru: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/>',
   tema: '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.15-.8-.4-1-.25-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5-4.5-9-10-9z"/><circle cx="7.5" cy="11" r="1"/><circle cx="12" cy="7" r="1"/><circle cx="16.5" cy="10" r="1"/>',
   kunci: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-  keluar: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>'
+  keluar: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
 };
 function ico(n) { return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICO[n] + '</svg>'; }
 function panel() {
@@ -402,7 +411,7 @@ function tPantau() {
     P.cur = (ada || live || r.data[0]).id; P.pid = ''; P.pf = 'semua'; P.ps = ''; P.pd = null; if (P.auto === undefined) P.auto = true;
     pc('<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><h1>Pantau Ujian</h1></div><select id="su" style="max-width:400px">' +
       r.data.map(function (u) { var b = n >= u.mulai && n <= u.selesai ? '● ' : n < u.mulai ? '◷ ' : '✓ '; return '<option value="' + u.id + '"' + (u.id === P.cur ? ' selected' : '') + '>' + b + esc(u.judul) + ' (' + esc(u.kelas) + ')</option>'; }).join('') + '</select></div>' +
-      '<div id="pk" style="margin-top:16px"><div class="sk"></div></div><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div id="pch" style="display:flex;gap:8px;flex-wrap:wrap"></div><span style="flex:1"></span>' +
+      '<div id="pk" style="margin-top:16px"><div class="sk"></div></div><div id="pkc"></div><div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div id="pch" style="display:flex;gap:8px;flex-wrap:wrap"></div><span style="flex:1"></span>' +
       '<input id="ps" placeholder="Cari nama / NIS..." style="max-width:210px"><label class="sm" style="display:flex;gap:6px;align-items:center;white-space:nowrap"><input type="checkbox" id="pa" style="width:auto;min-height:0"' + (P.auto ? ' checked' : '') + '> Otomatis 15 dtk</label>' +
       '<button class="btn sm" onclick="App.muat()">⟳ Segarkan</button><button class="btn sm" onclick="App.unduhPantau()">Unduh CSV</button></div><div class="tw" id="ptb" style="margin-top:12px"></div></div>');
     $('#su').onchange = function () { P.cur = this.value; P.pd = null; P.pf = 'semua'; $('#pk').innerHTML = '<div class="sk"></div>'; muatPantau(); };
@@ -427,28 +436,41 @@ function drawPantau() {
   $('#pk').innerHTML = '<div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:240px"><span class="badge ' + st[0] + '">' + st[1] + '</span><h2 style="margin:6px 0 2px">' + esc(d.judul) + '</h2>' +
     '<div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal<br>' + rentang(d.mulai, d.selesai) + '</div></div>' +
     '<div style="text-align:center"><div class="xs muted">Token ujian</div><div class="mono" style="font-size:28px;font-weight:700;letter-spacing:.25em">' + esc(d.token) + '</div><button class="btn sm" onclick="App.salinToken()">Salin token</button></div>' +
-    '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div><div id="pkc"></div>' +
+    '<button class="btn d" onclick="App.hapusUjian()">🗑 Hapus ujian</button></div>' +
     '<div class="grid g4" style="margin-top:12px">' + kp('Total peserta', tot, '#1E3A5F', c.belum + ' belum mulai') + kp('Sedang mengerjakan', c.mengerjakan, '#3B82F6', 'saat ini') + kp('Sudah selesai', c.selesai, '#16A34A', Math.round(pct(c.selesai)) + '% peserta') + kp('Ada pelanggaran', c.pel, '#DC2626', 'siswa pindah tab') + '</div>' +
     '<div class="prog" style="margin-top:12px;height:10px"><i style="width:' + pct(c.selesai) + '%;background:var(--ok)"></i><i style="width:' + pct(c.mengerjakan) + '%;background:#3B82F6"></i></div>' +
     '<div class="sm muted" style="display:flex;justify-content:space-between"><span>🟩 selesai · 🟦 mengerjakan · ⬜ belum mulai</span><span>Diperbarui ' + new Date(P.pt).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }) + '</span></div>';
   $('#pch').innerHTML = [['semua', 'Semua', tot], ['belum', 'Belum mulai', c.belum], ['mengerjakan', 'Mengerjakan', c.mengerjakan], ['selesai', 'Selesai', c.selesai], ['pel', 'Pelanggaran', c.pel]].map(function (t) { return '<button class="chip' + (P.pf === t[0] ? ' on' : '') + '" onclick="App.pf(\'' + t[0] + '\')">' + t[1] + ' (' + t[2] + ')</button>'; }).join('');
-  if (P.kcFor !== P.cur) {
-    P.kcFor = P.cur; var kc = d.kumpul, km = kc < 0 ? '-1' : kc > 0 ? 'n' : '0';
+  var kc = d.kumpul, km = kc < 0 ? '-1' : kc > 0 ? 'n' : '0';
+  if (P.kcFor !== P.cur || !$('#pks')) { // kartu ini di luar area yang dirender ulang: dibuat sekali, tidak berkedip
+    P.kcFor = P.cur;
     $('#pkc').innerHTML = '<div class="card" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><b>🔒 Tombol Kumpulkan siswa:</b><select id="pks" onchange="App.pks()" style="max-width:360px"><option value="0"' + (km === '0' ? ' selected' : '') + '>Boleh dikumpulkan kapan saja</option><option value="n"' + (km === 'n' ? ' selected' : '') + '>Terkunci N menit pertama</option><option value="-1"' + (km === '-1' ? ' selected' : '') + '>Tidak ada tombol — otomatis saat waktu habis</option></select>' +
       '<input id="pkn" type="number" min="1" max="' + d.durasi + '" value="' + (kc > 0 ? kc : '') + '" placeholder="menit" style="width:100px" class="' + (km === 'n' ? '' : 'hide') + '"><button class="btn p sm" onclick="App.kumpulAtur()">Simpan</button><span class="sm muted">Durasi ujian ' + d.durasi + ' menit. Berlaku juga untuk siswa yang sedang mengerjakan.</span></div>';
-  } else if (!$('#pkc').innerHTML) P.kcFor = '';
+  } else { var fo = document.activeElement; if (fo !== $('#pks') && fo !== $('#pkn')) { $('#pks').value = km; $('#pkn').value = kc > 0 ? kc : ''; $('#pkn').className = km === 'n' ? '' : 'hide'; } }
   drawTabel();
 }
 function drawTabel() {
   var d = P.pd; if (!d) return; var q = (P.ps || '').toLowerCase(), f = P.pf || 'semua';
   var B = { belum: ['b-mut', 'Belum mulai'], berlangsung: ['b-info', 'Mengerjakan'], dikumpulkan: ['b-ok', 'Selesai'], 'dikumpulkan-otomatis': ['b-warn', 'Dikumpulkan otomatis'] };
   var L = d.rows.filter(function (x) { return (f === 'semua' || (f === 'pel' ? x.pelanggaran > 0 : pStat(x) === f)) && (!q || (x.nis + ' ' + x.nama).toLowerCase().indexOf(q) >= 0); });
-  $('#ptb').innerHTML = L.length ? '<table><thead><tr><th>Siswa</th><th>Kelas</th><th>Status</th><th style="min-width:130px">Progres jawaban</th><th>Pelanggaran</th><th>Nilai</th></tr></thead><tbody>' + L.map(function (x) {
+  $('#ptb').innerHTML = L.length ? '<table><thead><tr><th>Siswa</th><th>Kelas</th><th>Status</th><th style="min-width:130px">Progres jawaban</th><th>Pelanggaran</th><th>Login</th><th>Nilai</th></tr></thead><tbody>' + L.map(function (x) {
     var p = d.jumlah ? Math.round(x.jawab / d.jumlah * 100) : 0, b = B[x.status] || B.belum;
     return '<tr style="' + (x.pelanggaran >= 3 ? 'background:var(--bad-bg)' : x.pelanggaran ? 'background:var(--warn-bg)' : '') + '"><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><div><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></div></div></td><td>' + esc(x.kelas) + '</td>' +
       '<td><span class="badge ' + b[0] + '">' + b[1] + '</span></td><td><div class="sm">' + x.jawab + ' / ' + d.jumlah + '</div><div class="prog" style="margin:4px 0 0"><i style="width:' + p + '%;background:var(--primary)"></i></div></td>' +
-      '<td>' + (x.pelanggaran >= 3 ? '<span class="badge b-bad">' + x.pelanggaran + 'x terkunci</span>' : x.pelanggaran ? '<span class="badge b-warn">' + x.pelanggaran + 'x</span>' : '<span class="muted">0x</span>') + '</td><td><b>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</b></td></tr>';
+      '<td>' + (x.pelanggaran >= 3 ? '<span class="badge b-bad">' + x.pelanggaran + 'x terkunci</span>' : x.pelanggaran ? '<span class="badge b-warn">' + x.pelanggaran + 'x</span>' : '<span class="muted">0x</span>') + '</td><td>' + loginSel(x) + '</td><td><b>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</b></td></tr>';
   }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada siswa pada filter ini.</p>';
+}
+function loginSel(x) { return x.login ? '<span class="badge b-info">Aktif</span><br><button class="btn sm" style="margin-top:4px" onclick="App.rlogin(\'' + x.nis + '\')">Reset login</button>' : '<span class="muted">—</span>'; }
+function rlogin(nis) { // reset login dari Pantau Ujian (+ tambah waktu bila sesi masih berlangsung)
+  var x = P.pd && P.pd.rows.filter(function (r) { return r.nis === nis; })[0]; if (!x) return; var ber = x.status === 'berlangsung';
+  dlg('Reset login siswa', '<p><b>' + esc(x.nama) + '</b> · NIS ' + esc(x.nis) + '</p><p class="muted">Perangkat yang sedang login akan dikeluarkan. Siswa dapat masuk kembali' + (ber ? ' dan <b>melanjutkan ujian yang sedang berlangsung</b> dengan jawaban yang sudah tersimpan.' : '.') + '</p>' +
+    (ber ? '<label class="field"><span>Tambah waktu pengerjaan (menit)</span><input id="rlt" type="number" min="0" max="120" value="0"><small class="muted">Waktu tetap berjalan menurut jam server. Isi hanya bila siswa kehilangan waktu karena gangguan jaringan. Sisa waktu menyesuaikan otomatis saat siswa membuka halaman ujian.</small></label>' : ''), 'Reset Login', function (close, btn) {
+    var tb = ber ? Math.max(0, Math.min(120, Math.floor(Number($('#rlt').value) || 0))) : 0;
+    Api.call('ujian.resetlogin', { idUjian: P.cur, nis: nis, tambah: tb }).then(function (r) {
+      if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; }
+      close(); toast(r.data.kedaluwarsa ? 'Login direset, tetapi waktu siswa sudah habis sehingga tidak bisa ditambah.' : 'Login direset' + (r.data.tambah ? ' · waktu +' + r.data.tambah + ' menit' : ''), r.data.kedaluwarsa ? 'warn' : ''); muatPantau(true);
+    });
+  });
 }
 function hapusUjian() {
   var d = P.pd, c = P.pc || { selesai: 0, mengerjakan: 0 }; if (!d) return;
@@ -639,8 +661,8 @@ function drawSiswa() {
   el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><h3>Daftar siswa <span class="badge b-info">' + P.sw.length + '</span></h3><span style="flex:1"></span><button class="btn p sm" onclick="App.sForm(\'\')">+ Tambah siswa</button><button class="btn sm" onclick="App.kartu()">🖨 Cetak kartu ujian</button><input id="sq" placeholder="Cari NIS / nama..." value="' + esc(P.sq || '') + '" style="max-width:230px">' +
     '<select id="sk" style="max-width:180px"><option value="">Semua kelas</option>' + Object.keys(kl).sort().map(function (x) { return '<option' + (k === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
     '<p class="muted sm">Password tersimpan sebagai hash sehingga <b>tidak dapat dilihat</b>. Admin dapat menetapkan password baru secara manual (atau acak) lewat tombol Password.</p>' +
-    '<div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th></th></tr></thead><tbody>' +
-    L.slice(0, 200).map(function (s) { return '<tr><td class="mono">' + esc(s.nis) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.kelas) + '</td><td><span class="badge ' + (s.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(s.status) + '</span></td><td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.pwSiswa(\'' + esc(s.nis) + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button></td></tr>'; }).join('') +
+    '<div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th>Login</th><th></th></tr></thead><tbody>' +
+    L.slice(0, 200).map(function (s) { return '<tr><td class="mono">' + esc(s.nis) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.kelas) + '</td><td><span class="badge ' + (s.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(s.status) + '</span></td><td>' + (s.login ? '<span class="badge b-info">Aktif</span> <button class="btn sm" onclick="App.srl(\'' + esc(s.nis) + '\')">Reset</button>' : '<span class="muted">—</span>') + '</td><td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.pwSiswa(\'' + esc(s.nis) + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button></td></tr>'; }).join('') +
     '</tbody></table></div>' + (L.length > 200 ? '<p class="muted sm">Menampilkan 200 dari ' + L.length + ' — gunakan pencarian.</p>' : L.length ? '' : '<p class="muted">Tidak ada siswa.</p>');
   $('#sq').oninput = function () { P.sq = this.value; var p = this.selectionStart; drawSiswa(); var e = $('#sq'); e.focus(); e.setSelectionRange(p, p); };
   $('#sk').onchange = function () { P.sk = this.value; drawSiswa(); };
@@ -690,6 +712,12 @@ function sForm(nis) {
       else m.remove();
     });
   };
+}
+function siswaResetLogin(nis) {
+  var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
+  dlg('Reset login siswa?', '<p><b>' + esc(s.nama) + '</b> · NIS ' + esc(s.nis) + ' · ' + esc(s.kelas) + '</p><p class="muted">Perangkat yang sedang login dikeluarkan dan siswa dapat masuk kembali, termasuk melanjutkan ujian yang masih berlangsung.</p>', 'Reset Login', function (close, btn) {
+    Api.call('siswa.resetlogin', { nis: nis }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Login siswa direset'); listSiswa(); });
+  });
 }
 function sHapus(nis) {
   var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
@@ -944,7 +972,11 @@ function drawLap() {
 
 /* ---------- API PUBLIK untuk onclick ---------- */
 window.App = {
-  keluar: function () { if (X && X.aktif && !confirm('Ujian sedang berlangsung. Keluar sekarang?')) return; Sesi.keluar(); location.reload(); },
+  keluar: function () {
+    if (X && X.aktif && !confirm('Ujian sedang berlangsung. Keluar sekarang?')) return;
+    var go = function () { Sesi.keluar(); location.reload(); };
+    if (S.me && S.me.role === 'siswa') { setTimeout(go, 3000); (X && X.aktif ? flush() : Promise.resolve()).then(function () { return Api.call('logout'); }).then(go, go); } else go();
+  },
   home: function () { dash(); }, filter: function (k) { S.filter = k; drawDash(); }, buka: buka, mulai: function () { mulai(false); },
   pilih: pilih, nav: function (d) { X.idx = Math.max(0, Math.min(X.soal.length - 1, X.idx + d)); localSave(); drawQ(); }, ke: function (i) { X.idx = i; localSave(); drawQ(); },
   ragu: function () { var s = cur(); if (X.ragu[s.id]) delete X.ragu[s.id]; else X.ragu[s.id] = 1; localSave(); drawQ(); },
@@ -964,7 +996,7 @@ window.App = {
   sdel: function (id) { var s = P.bs.all.filter(function (x) { return x.id === id; })[0]; if (s) soalHapus([id], '<b>' + esc(s.mapel) + '</b> — ' + esc(s.t.slice(0, 90))); },
   bdelSel: function () { var ids = Object.keys(P.bs.sel); if (ids.length) soalHapus(ids, '<b>' + ids.length + ' soal terpilih</b>'); },
   bcsv: function () { unduh('bank-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci']].concat(P.bs.all.map(function (s) { return [s.mapel, s.t, s.o.A, s.o.B, s.o.C, s.o.D, s.o.E, s.kunci]; }))); },
-  kartu: kartu, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
+  kartu: kartu, srl: siswaResetLogin, rlogin: rlogin, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
   pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
   salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
   unduhPantau: function () { var d = P.pd; if (!d) return; unduh('pantau-' + d.judul.replace(/\W+/g, '-') + '.csv', [['NIS', 'Nama', 'Kelas', 'Status', 'Terjawab', 'Pindah tab', 'Nilai']].concat(d.rows.map(function (x) { return [x.nis, x.nama, x.kelas, x.status, x.jawab + '/' + d.jumlah, x.pelanggaran, x.nilai == null ? '' : x.nilai]; }))); },
