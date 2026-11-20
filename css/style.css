@@ -144,3 +144,16 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);bo
 .side .mi.on{background:rgba(255,255,255,.12);color:#fff;border-left-color:var(--accent)}.side .mi.on .ico{opacity:1}
 .umenu button{display:flex;gap:10px;align-items:center}.umenu .ico{width:17px;height:17px;color:var(--muted);flex:none}
 @media(max-width:900px){.side .brand,.sgrp{display:none}.side .mi{width:auto;white-space:nowrap;border-left:0;border-bottom:3px solid transparent;border-radius:6px 6px 0 0;padding:8px 12px}.side .mi.on{border-bottom-color:var(--accent)}}
+
+/* keamanan perangkat, ruang ujian di HP, dan menu reset login */
+.dvc{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:16px 0;background:var(--card)}
+.dvl{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:9px}
+.dv{display:flex;gap:10px;align-items:flex-start}.dv .dd{width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--line2);flex:none}
+.dv.ok .dd{background:#16A34A}.dv.warn .dd{background:#F59E0B}.dv.bad .dd{background:#DC2626}
+.dv b{display:block;font-size:13px}.dv div>span{display:block;font-size:12.5px;color:var(--muted);line-height:18px}
+.dvh{margin-top:12px;font-size:13px;line-height:20px}.dvh summary{cursor:pointer;font-weight:600}.dvh ol{margin:8px 0 6px;padding-left:20px}
+.agree{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:13px;cursor:pointer;line-height:19px}.agree input{width:auto;min-height:0;margin-top:3px;flex:none}
+body.xroom{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+body.xroom img{-webkit-user-drag:none;pointer-events:none}
+body.shield #q,body.shield #nv,body.shield .xtop{filter:blur(18px);pointer-events:none}
+#wm{position:fixed;inset:0;z-index:45;pointer-events:none;background-repeat:repeat;background-size:340px 190px}

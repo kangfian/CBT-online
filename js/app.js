@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v3.0', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v3.1', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -46,7 +46,7 @@ function viewLogin(msg) {
     '<div class="lg2-help">' + (st ? '<a href="index.html">Kembali ke halaman login siswa</a>' : 'Satu akun hanya dapat digunakan di satu perangkat. Jika Anda terlempar dari aplikasi saat ujian, minta pengawas untuk mereset login Anda.<br><a href="admin.html">Masuk sebagai admin atau guru</a>') + '</div></form></section></div>');
   $('#f').onsubmit = function (ev) {
     ev.preventDefault(); var b = $('button.lgb', this); b.disabled = true; b.textContent = 'Memeriksa...'; busy(true);
-    Api.call('login', { id: $('#id').value, password: $('#pw').value, tipe: MODE }).then(function (r) {
+    Api.call('login', { id: $('#id').value, password: $('#pw').value, tipe: MODE, dev: MODE === 'siswa' ? devInfo() : undefined }).then(function (r) {
       busy(false);
       if (r.success) { Sesi.simpan({ token: r.data.token, me: r.data.me }); S.me = r.data.me; masuk(); }
       else { b.disabled = false; b.textContent = 'Masuk'; $('#e').textContent = r.message; }
@@ -96,20 +96,56 @@ function drawDash(skel) {
 }
 
 /* ---------- VERIFIKASI ---------- */
+/* ---------- PERANGKAT & PEMERIKSAAN PRA-UJIAN ---------- */
+function infoPerangkat(ua, plat, mt, sa) {
+  ua = ua || ''; var ios = /iPhone|iPad|iPod/.test(ua) || (plat === 'MacIntel' && mt > 1), android = /Android/.test(ua);
+  var os = ios ? 'iOS' : android ? 'Android' : /CrOS/.test(ua) ? 'ChromeOS' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Lainnya';
+  var inApp = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|WhatsApp|Snapchat|TikTok|musical_ly|Twitter|LinkedInApp|Telegram|GSA\//i.test(ua) || (android && /; wv\)/.test(ua)) || (ios && !/Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua));
+  var br = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /EdgA|EdgiOS|Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Browser';
+  return { os: os, br: br, inApp: inApp, mobile: ios || android, ios: ios, android: android, pwa: !!sa };
+}
+function devAmbil() {
+  var n = typeof navigator !== 'undefined' ? navigator : {};
+  return infoPerangkat(n.userAgent, n.platform, n.maxTouchPoints, n.standalone === true || (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches));
+}
+function devId() { try { var k = 'cbt_dev', v = localStorage.getItem(k); if (!v) { v = 'D' + Math.random().toString(36).slice(2, 10); localStorage.setItem(k, v); } return v; } catch (e) { return ''; } }
+function devInfo() { var d = devAmbil(), s = typeof screen !== 'undefined' ? screen : {}; return { id: devId(), os: d.os, br: d.br, w: s.width, h: s.height, pwa: d.pwa, touch: d.mobile }; }
+function devInfoBlok() { return CFG.BLOKIR_APLIKASI !== false && devAmbil().inApp; }
+var DEV = { blok: false };
+function devHtml() {
+  var d = devAmbil(), n = typeof navigator !== 'undefined' ? navigator : {}, ol = n.onLine !== false, blok = devInfoBlok() || !ol; DEV.blok = blok;
+  var row = function (st, t, s) { return '<li class="dv ' + st + '"><span class="dd"></span><div><b>' + t + '</b><span>' + s + '</span></div></li>'; };
+  var L = [row(d.inApp ? 'bad' : 'ok', 'Browser', d.inApp ? 'Anda membuka dari dalam aplikasi lain (WhatsApp, Instagram, dll.). Salin tautan lalu buka di Chrome atau Safari.' : esc(d.br + ' · ' + d.os)),
+    row(ol ? 'ok' : 'bad', 'Koneksi internet', ol ? 'Terhubung.' : 'Tidak ada koneksi. Sambungkan internet lalu muat ulang halaman.'),
+    row(fsOk() ? 'ok' : 'warn', 'Layar penuh', fsOk() ? 'Aktif otomatis saat ujian dimulai. Keluar dari layar penuh dicatat sebagai pelanggaran.' : d.ios ? 'iPhone tidak mendukung layar penuh di browser. Gunakan Akses Berpemandu (petunjuk di bawah).' : 'Tidak tersedia di browser ini.'),
+    row(n.wakeLock ? 'ok' : 'warn', 'Layar tetap menyala', n.wakeLock ? 'Layar dijaga tetap menyala selama ujian.' : 'Atur waktu layar mati ke yang paling lama sebelum memulai.'),
+    row('', 'Baterai', '<span id="bat">Memeriksa...</span>')];
+  if (d.ios) L.push(row(d.pwa ? 'ok' : 'warn', 'Mode aplikasi', d.pwa ? 'Berjalan dari Layar Utama.' : 'Opsional: Bagikan → Tambah ke Layar Utama, lalu buka dari ikonnya. Lakukan sebelum login.'));
+  var ios = '<ol><li>Buka <b>Pengaturan → Aksesibilitas → Akses Berpemandu</b>, aktifkan, lalu atur kode sandi.</li><li>Buka halaman ujian ini di Safari, klik <b>tombol samping 3 kali</b> (atau tombol Home 3 kali), pilih <b>Mulai</b>.</li><li>Aktifkan <b>Jangan Ganggu</b> agar notifikasi tidak muncul.</li></ol>';
+  var and = '<ol><li>Aktifkan <b>Sematkan layar / Sematkan aplikasi</b> di Pengaturan → Keamanan (nama menu berbeda tiap merek).</li><li>Buka Chrome pada halaman ujian, tekan tombol <b>Terbaru</b>, ketuk ikon Chrome → <b>Sematkan</b>.</li><li>Aktifkan <b>Jangan Ganggu</b>; matikan gelembung chat, jendela melayang, dan layar terbagi.</li></ol>';
+  return '<div class="dvc"><b>Pemeriksaan perangkat</b><ul class="dvl">' + L.join('') + '</ul>' +
+    (d.mobile ? '<details class="dvh" open><summary>Petunjuk pengamanan ' + (d.ios ? 'iPhone' : 'Android') + ' (sangat disarankan)</summary>' + (d.ios ? ios : and) + '<div class="muted">Langkah ini dilakukan di pengaturan perangkat; aplikasi web tidak dapat mengaktifkannya sendiri.</div></details>' : '') +
+    '<label class="agree"><input type="checkbox" id="agree"> Saya telah membaca tata tertib dan memahami bahwa pelanggaran tercatat.</label></div>';
+}
+function devBaterai() {
+  var e = $('#bat'); if (!e) return;
+  try { if (navigator.getBattery) navigator.getBattery().then(function (b) { var p = Math.round(b.level * 100); e.textContent = p + '%' + (b.charging ? ' (sedang mengisi)' : '') + (p < 30 && !b.charging ? ' — sebaiknya isi daya atau sambungkan charger' : ''); }, function () { e.textContent = 'Tidak dapat diperiksa'; }); else e.textContent = 'Tidak dapat diperiksa di browser ini'; } catch (x) { e.textContent = 'Tidak dapat diperiksa'; }
+}
 function viewVerif() {
   var u = S.cur, m = S.me;
   var f = function (k, v) { return '<div><div class="xs muted">' + k + '</div><b>' + esc(v) + '</b></div>'; };
   render(topbar() + '<main class="wrap narrow"><div class="card"><div class="xs muted">Langkah 1 dari 2 • Konfirmasi data &amp; validasi token</div>' +
     '<h1 style="margin-top:10px">Verifikasi Peserta Ujian</h1><p class="muted">Pastikan data Anda dan paket ujian sudah sesuai sebelum mulai.</p>' +
     '<div class="note grid g2" style="gap:14px">' + f('Nama peserta', m.nama) + f('NIS', m.id) + f('Kelas', m.kelas) + f('Mata pelajaran', u.mapel || u.judul) + f('Durasi', u.durasi + ' menit') + f('Jumlah soal', u.jumlah + ' pilihan ganda') + '</div>' +
-    '<div class="note w"><b>Tata tertib integritas</b><br>• Timer berjalan sejak tombol Mulai ditekan dan tidak dapat dijeda.<br>• Berpindah tab/jendela tercatat; pelanggaran ke-3 mengumpulkan ujian otomatis.<br>• Jawaban tersimpan otomatis di perangkat dan dikirim ke server secara berkala.</div>' +
-    '<label class="field"><span>Masukkan token ujian (dari guru)</span><input id="tk" class="token" maxlength="12" autocomplete="off"></label><div class="err" id="e"></div>' +
+    '<div class="note w"><b>Tata tertib integritas</b><br>• Timer berjalan sejak tombol Mulai ditekan dan tidak dapat dijeda.<br>• Pindah aplikasi/tab, keluar layar penuh, mengubah ukuran jendela (layar terbagi), dan mencetak tercatat; pelanggaran ke-3 mengumpulkan ujian otomatis.<br>• Salin, tempel, dan tekan-tahan pada soal diblokir serta dicatat.<br>• Jawaban tersimpan otomatis di perangkat dan dikirim ke server secara berkala.</div>' +
+    devHtml() + '<label class="field"><span>Masukkan token ujian (dari guru)</span><input id="tk" class="token" maxlength="12" autocomplete="off"></label><div class="err" id="e"></div>' +
     '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap"><button class="btn" onclick="App.home()">Kembali</button><button class="btn a" id="go" style="flex:1" onclick="App.mulai()">Verifikasi Token &amp; Mulai Ujian</button></div></div></main>');
-  $('#tk').focus(); $('#tk').onkeydown = function (e) { if (e.key === 'Enter') mulai(); };
+  var upd = function () { var g = $('#go'); if (g) g.disabled = !($('#agree') && $('#agree').checked) || DEV.blok; }; if ($('#agree')) $('#agree').onchange = upd; upd(); devBaterai();
+  $('#tk').focus(); $('#tk').onkeydown = function (e) { if (e.key === 'Enter' && !$('#go').disabled) mulai(); };
 }
 function buka(id) {
   S.cur = S.ujian.filter(function (u) { return u.id === id; })[0]; if (!S.cur) return;
-  if (stat(S.cur) === 'berlangsung') mulai(true); else viewVerif();
+  if (stat(S.cur) === 'berlangsung') { if (devInfoBlok()) { toast('Buka ujian ini di Chrome atau Safari, bukan dari dalam aplikasi lain.', 'error'); return; } mulai(true); } else viewVerif();
 }
 function mulai(resume) {
   var tk = resume ? '' : ($('#tk').value || '').trim(), b = $('#go');
@@ -128,6 +164,9 @@ function mulai(resume) {
 /* ---------- SUARA PERINGATAN, LAYAR PENUH, TEMA ---------- */
 var MSG = { pindah_tab: ['Peringatan pertama. Anda terdeteksi berpindah tab. Mohon tetap berada di halaman ujian.', 'Peringatan kedua. Jika Anda berpindah tab sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'],
   keluar_fullscreen: ['Peringatan pertama. Anda keluar dari layar penuh. Segera kembali ke layar penuh.', 'Peringatan kedua. Jika Anda keluar dari layar penuh sekali lagi, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'] };
+MSG.jendela_diubah = ['Peringatan pertama. Jendela atau fokus ujian berubah. Jangan membuka aplikasi lain atau layar terbagi.', 'Peringatan kedua. Jika terulang, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'];
+MSG.cetak = ['Peringatan pertama. Percobaan mencetak atau menyimpan halaman terdeteksi.', 'Peringatan kedua. Jika terulang, ujian akan dikumpulkan otomatis.', 'Peringatan ketiga. Ujian Anda telah dikumpulkan otomatis.'];
+var JT = { pindah_tab: 'Peringatan Pelanggaran', keluar_fullscreen: 'Anda Keluar dari Layar Penuh', jendela_diubah: 'Jendela atau Fokus Berubah', cetak: 'Percobaan Mencetak Terdeteksi' };
 function tts(n, j) { // suara pengucap (bahasa Indonesia) bawaan perangkat
   if (!window.speechSynthesis) return;
   var u = new SpeechSynthesisUtterance(MSG[j || 'pindah_tab'][n - 1]), v = speechSynthesis.getVoices().filter(function (x) { return /^id/i.test(x.lang); })[0];
@@ -141,8 +180,8 @@ function popPel(n, j) { // pop-up peringatan pelanggaran untuk siswa
   var o = $('#pp'); if (o) o.remove();
   var fs = j === 'keluar_fullscreen', fin = n >= 3, m = document.createElement('div'); m.className = 'modal'; m.id = 'pp';
   var dots = [1, 2, 3].map(function (i) { return '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 4px;background:' + (i <= n ? 'var(--bad)' : 'var(--line)') + '"></span>'; }).join('');
-  m.innerHTML = '<div class="card" style="text-align:center;border-top:6px solid var(--bad)"><div style="font-size:46px;line-height:56px">' + (fs ? '🖥️' : '⚠️') + '</div><h2 style="color:var(--bad);margin:4px 0 10px">' + (fin ? 'Ujian Dikumpulkan Otomatis' : fs ? 'Anda Keluar dari Layar Penuh' : 'Peringatan Pelanggaran ' + n + ' dari 3') + '</h2>' +
-    '<p>' + esc(MSG[fs ? 'keluar_fullscreen' : 'pindah_tab'][n - 1]) + '</p><div style="margin:14px 0">' + dots + '</div><p class="sm muted">' + (fs ? 'Ujian harus dikerjakan dalam layar penuh. Keluar dari layar penuh tercatat sebagai pelanggaran (' + Math.min(n, 3) + ' dari 3).' : 'Berpindah tab atau jendela selama ujian tercatat dan dilaporkan ke guru.') + '</p>' +
+  m.innerHTML = '<div class="card" style="text-align:center;border-top:6px solid var(--bad)"><div style="font-size:46px;line-height:56px">' + (fs ? '🖥️' : '⚠️') + '</div><h2 style="color:var(--bad);margin:4px 0 10px">' + (fin ? 'Ujian Dikumpulkan Otomatis' : (JT[j] || 'Peringatan Pelanggaran') + ' (' + n + ' dari 3)') + '</h2>' +
+    '<p>' + esc(MSG[MSG[j] ? j : 'pindah_tab'][n - 1]) + '</p><div style="margin:14px 0">' + dots + '</div><p class="sm muted">' + (fs ? 'Ujian harus dikerjakan dalam layar penuh. Keluar dari layar penuh tercatat sebagai pelanggaran (' + Math.min(n, 3) + ' dari 3).' : 'Berpindah tab atau jendela selama ujian tercatat dan dilaporkan ke guru.') + '</p>' +
     '<div class="row" style="justify-content:center"><button class="btn p" id="okp">' + (fin ? 'Lihat Hasil' : fs ? 'Kembali ke Layar Penuh' : 'Saya Mengerti, Lanjutkan Ujian') + '</button></div></div>';
   document.body.appendChild(m); $('#okp').focus();
   $('#okp').onclick = function () { m.remove(); if (window.speechSynthesis) speechSynthesis.cancel(); if (!fin && X && X.aktif) fsMasuk(); };
@@ -218,6 +257,7 @@ function startExam(d) {
   X.t = setInterval(tick, 1000); tick();
   document.addEventListener('visibilitychange', onVis); document.addEventListener('fullscreenchange', onFs); document.addEventListener('webkitfullscreenchange', onFs);
   X.fsOn = fsAktif(); if (fsOk() && !X.fsOn) fsGate();
+  amanPasang();
   window.onbeforeunload = function () { return X && X.aktif ? 'Ujian sedang berlangsung.' : undefined; };
 }
 function localSave() { save('cbt_exam', { id: X.id, jawab: X.jawab, ragu: X.ragu, idx: X.idx }); }
@@ -266,19 +306,73 @@ function tick() {
   if (sisa <= 0) { e.textContent = '00:00'; kumpul(true); return; }
   var kb = $('#kb'); if (kb && X.ks > 0 && kb.disabled) { var s2 = kbBuka() - now(); if (s2 <= 0) drawQ(); else kb.textContent = '🔒 Kumpulkan (dibuka ' + mmss(s2) + ')'; }
   e.textContent = mmss(sisa); e.className = 'timer' + (sisa < 120000 ? ' bad' : sisa < 600000 ? ' warn' : '');
-  if (++X.n % 15 === 0) flush();
+  ++X.n; if (X.n % 15 === 0) flush(); if (X.n % 45 === 5) denyut();
 }
-function catat(jenis) { // satu pintu pencatatan pelanggaran (pindah tab / keluar layar penuh)
-  if (!X || !X.aktif) return; var t = Date.now(); if (t - (X.lp || 0) < 1500) return; X.lp = t;
+var HITUNG = { pindah_tab: 1, keluar_fullscreen: 1, jendela_diubah: 1, cetak: 1 };
+function nid() { return 'N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function catat(jenis) { // satu pintu pencatatan pelanggaran (berhitung = menuju 3x; ringan = hanya dicatat)
+  if (!X || !X.aktif) return; var t = Date.now();
+  if (!HITUNG[jenis]) { if (t - (X.lr || 0) < 20000) return; X.lr = t; kirimPel({ nid: nid(), jenis: jenis }); toast('Aktivitas tidak diizinkan: dicatat dan dilaporkan ke pengawas.', 'warn'); return; }
+  if (t - (X.lp || 0) < 1500) return; X.lp = t;
   X.pel++; V.n = Math.min(X.pel, 3); V.j = jenis; banner();
-  if (jenis === 'keluar_fullscreen' && !document.hidden) { var n = V.n; V.n = 0; popPel(n, jenis); setTimeout(function () { suara(n, jenis); }, 250); }
-  Api.call('pelanggaran.catat', { idSesi: X.id, jenis: jenis }).then(function (r) {
-    if (r.success && r.data && r.data.hasil) tamat(r.data.hasil);
-    else if (r.success && r.data && r.data.selesai) kumpul(true);
-    else if (!r.success && X && X.pel >= 3) kumpul(true);
+  if (!document.hidden) { var n = V.n; V.n = 0; popPel(n, jenis); setTimeout(function () { suara(n, jenis); }, 250); }
+  kirimPel({ nid: nid(), jenis: jenis });
+}
+function kirimPel(it) { // antrian dengan pengiriman ulang; beacon saat aplikasi ke latar belakang; server mengabaikan duplikat (nid)
+  X.pq = X.pq || []; X.pq.push(it);
+  if (document.hidden && Api.beacon) Api.beacon('pelanggaran.catat', { idSesi: X.id, jenis: it.jenis, nid: it.nid });
+  pelAntrian();
+}
+function pelAntrian() {
+  if (!X || !X.aktif || X.pk || !X.pq || !X.pq.length) return; X.pk = true; var it = X.pq[0];
+  Api.call('pelanggaran.catat', { idSesi: X.id, jenis: it.jenis, nid: it.nid }).then(function (r) {
+    if (!X) return; X.pk = false;
+    if (r.success) { X.pq.shift(); if (r.data && r.data.hasil) { tamat(r.data.hasil); return; } if (r.data && r.data.selesai) { kumpul(true); return; } pelAntrian(); }
+    else { if (X.pel >= 3) kumpul(true); setTimeout(pelAntrian, 4000); }
   });
 }
-function onVis() { if (X && X.aktif && document.hidden) catat('pindah_tab'); }
+function shield(on) { try { document.body.className = on ? 'xroom shield' : 'xroom'; } catch (e) {} }
+function wmUrl(teks) { var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="340" height="190"><text x="170" y="95" text-anchor="middle" transform="rotate(-24 170 95)" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="600" fill="#7f7f7f" fill-opacity="0.16">' + esc(teks) + '</text></svg>'; return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); }
+function wmPasang() { var w = document.createElement('div'); w.id = 'wm'; if (w.setAttribute) w.setAttribute('aria-hidden', 'true'); w.style.backgroundImage = 'url("' + wmUrl(S.me.nama + ' · ' + S.me.id + ' · ' + String(X.id).slice(-4)) + '")'; document.body.appendChild(w); }
+function wlMinta() { try { if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (l) { if (X) X.wl = l; }, function () {}); } catch (e) {} }
+function denyut() { // detak ke server: tanda "terhubung" bagi pengawas + sinkron batas waktu
+  if (!X || !X.aktif) return;
+  Api.call('ujian.denyut', { idSesi: X.id }).then(function (r) {
+    if (!X || !r.success) return; if (r.data.selesai) { kumpul(true); return; }
+    if (r.data.batas) X.batas = r.data.batas; if (r.data.kumpul !== undefined && r.data.kumpul !== X.ks) { X.ks = r.data.kumpul; drawQ(); }
+  });
+}
+function ukuranDasar() { try { X.w0 = window.innerWidth; X.h0 = window.innerHeight; } catch (e) {} }
+function onResize() { // layar terbagi / jendela melayang / PiP: ukuran viewport mengecil tajam
+  clearTimeout(X.rt); X.rt = setTimeout(function () {
+    if (!X || !X.aktif || !X.w0) return; var w = window.innerWidth, h = window.innerHeight;
+    if (Math.abs(w - X.h0) < X.h0 * 0.15 && Math.abs(h - X.w0) < X.w0 * 0.15) { ukuranDasar(); return; } // rotasi layar (lebar & tinggi tertukar): bukan pelanggaran
+    if (w < X.w0 * 0.85 || h < X.h0 * 0.7) catat('jendela_diubah'); else { X.w0 = Math.max(X.w0, w); X.h0 = Math.max(X.h0, h); }
+  }, 700);
+}
+function onBlur() { shield(true); clearTimeout(X && X.bt); if (X) X.bt = setTimeout(function () { if (X && X.aktif && !document.hidden && !(document.hasFocus && document.hasFocus())) catat('jendela_diubah'); }, 2500); }
+function onFocus() { if (X) clearTimeout(X.bt); shield(false); }
+function onKey(e) {
+  var k = (e.key || '').toLowerCase(), c = e.ctrlKey || e.metaKey;
+  if (c && k.length === 1 && 'cvxpsuafg'.indexOf(k) >= 0) { e.preventDefault(); if (k === 'p') catat('cetak'); else if ('cvx'.indexOf(k) >= 0) catat('salin_tempel'); return; }
+  if (e.key === 'F12' || (c && e.shiftKey && /^[ijc]$/.test(k))) { e.preventDefault(); catat('salin_tempel'); return; }
+  if (e.key === 'PrintScreen') { try { navigator.clipboard.writeText(' '); } catch (x) {} catat('tangkap_layar'); }
+}
+function amanPasang() { // pengamanan berlapis di HP & laptop selama ujian
+  var W = window, D = document, L = [];
+  var add = function (t, ty, fn) { if (t && t.addEventListener) { t.addEventListener(ty, fn, true); L.push([t, ty, fn]); } };
+  var cegah = function (e) { if (e && e.preventDefault) e.preventDefault(); }, log = function (e) { cegah(e); catat('salin_tempel'); };
+  ['copy', 'cut', 'paste', 'contextmenu'].forEach(function (t) { add(D, t, log); }); ['dragstart', 'selectstart'].forEach(function (t) { add(D, t, cegah); });
+  add(D, 'keydown', onKey); add(W, 'pagehide', function () { catat('pindah_tab'); }); add(W, 'beforeprint', function () { catat('cetak'); });
+  if (CFG.DETEKSI_FOKUS !== false) { add(W, 'blur', onBlur); add(W, 'focus', onFocus); }
+  if (CFG.DETEKSI_UKURAN !== false) add(W, 'resize', onResize);
+  X.ev = L; ukuranDasar(); shield(false); wmPasang(); wlMinta();
+}
+function amanLepas() {
+  if (!X) return; (X.ev || []).forEach(function (e) { try { e[0].removeEventListener(e[1], e[2], true); } catch (x) {} }); X.ev = [];
+  clearTimeout(X.bt); clearTimeout(X.rt); try { document.body.className = ''; } catch (x) {} var w = $('#wm'); if (w) w.remove(); try { if (X.wl && X.wl.release) X.wl.release(); } catch (x) {}
+}
+function onVis() { if (!X || !X.aktif) return; if (document.hidden) { shield(true); catat('pindah_tab'); } else { shield(false); pelAntrian(); wlMinta(); } }
 function onFs() {
   if (!X || !X.aktif) return;
   if (fsAktif()) { X.fsOn = true; var g = $('#fg'); if (g) g.remove(); return; }
@@ -308,7 +402,7 @@ function kumpul(auto) {
 }
 function tamat(res) {
   if (!X || !X.aktif) return; X.aktif = false; clearInterval(X.t);
-  document.removeEventListener('visibilitychange', onVis); document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('webkitfullscreenchange', onFs); window.onbeforeunload = null; fsKeluar();
+  document.removeEventListener('visibilitychange', onVis); document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('webkitfullscreenchange', onFs); window.onbeforeunload = null; amanLepas(); fsKeluar();
   try { localStorage.removeItem('cbt_exam'); } catch (e) {}
   var m = $('#md'); if (m) m.remove();
   var u = S.cur; if (u) { u.sesi = { status: res.status, nilai: res.nilai }; save('cbt_ujian', { ujian: S.ujian, skew: S.skew }); }
@@ -340,12 +434,13 @@ var ICO = {
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
-  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  reset: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'
 };
 function ico(n) { return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICO[n] + '</svg>'; }
 function panel() {
   var adm = S.me.role === 'admin';
-  var G = [['', [['dash', 'Dashboard']]], ['Ujian', [['buat', 'Buat Ujian'], ['pantau', 'Pantau Ujian'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']]]].concat(adm ? [['Data', [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']]]] : []);
+  var G = [['', [['dash', 'Dashboard']]], ['Ujian', [['buat', 'Buat Ujian'], ['pantau', 'Pantau Ujian'], ['reset', 'Reset Login'], ['soal', 'Bank Soal'], ['laporan', 'Laporan']]]].concat(adm ? [['Data', [['siswa', 'Kelola Siswa'], ['guru', 'Kelola Guru']]]] : []);
   render('<div class="shell"><nav class="side"><div class="brand">CBT Online<small>' + (adm ? 'Administrator' : 'Guru') + '</small></div>' +
     G.map(function (g) { return (g[0] ? '<div class="sgrp">' + g[0] + '</div>' : '') + g[1].map(function (t) { return '<button class="mi' + (P.tab === t[0] ? ' on' : '') + '" data-t="' + t[0] + '" onclick="App.tab(\'' + t[0] + '\')">' + ico(t[0]) + '<span>' + t[1] + '</span></button>'; }).join(''); }).join('') +
     '<span class="sp"></span><div class="xs" style="color:rgba(255,255,255,.45);padding:0 12px 8px">Versi ' + VER + '</div><button class="mi" onclick="App.keluar()">' + ico('keluar') + '<span>Keluar</span></button></nav><main class="main"><div class="mtop"><span class="muted">' + new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }) + '</span><span class="sp"></span><div class="mewrap"><button class="me" onclick="App.menu(event)" aria-haspopup="true"><i>' + esc(S.me.nama.charAt(0).toUpperCase()) + '</i><div><b>' + esc(S.me.nama) + '</b><br><span class="muted">' + (adm ? 'Administrator' : 'Guru') + '</span></div><span class="muted">▾</span></button><div class="umenu hide" id="um"><button onclick="App.tema()">' + ico('tema') + 'Tema tampilan</button><button onclick="App.ganti()">' + ico('kunci') + 'Ganti Password</button><button onclick="App.keluar()">' + ico('keluar') + 'Keluar</button></div></div></div><div id="pc"></div></main></div>');
@@ -353,7 +448,7 @@ function panel() {
 }
 function tab(t) {
   clearInterval(P.iv); P.tab = t; Array.prototype.forEach.call(document.querySelectorAll('.side button[data-t]'), function (b) { b.className = 'mi' + (b.dataset.t === t ? ' on' : ''); });
-  ({ dash: tDash, pantau: tPantau, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
+  ({ dash: tDash, pantau: tPantau, reset: tReset, buat: tBuat, soal: tSoal, laporan: tLaporan, siswa: tSiswa, guru: tGuru })[t]();
 }
 function pc(h) { $('#pc').innerHTML = h; }
 function baris(rows) { return rows.length ? '' : '<p class="muted">Belum ada data.</p>'; }
@@ -460,15 +555,69 @@ function drawTabel() {
       '<td>' + (x.pelanggaran >= 3 ? '<span class="badge b-bad">' + x.pelanggaran + 'x terkunci</span>' : x.pelanggaran ? '<span class="badge b-warn">' + x.pelanggaran + 'x</span>' : '<span class="muted">0x</span>') + '</td><td>' + loginSel(x) + '</td><td><b>' + (x.nilai == null ? '—' : esc(x.nilai)) + '</b></td></tr>';
   }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada siswa pada filter ini.</p>';
 }
-function loginSel(x) { return x.login ? '<span class="badge b-info">Aktif</span><br><button class="btn sm" style="margin-top:4px" onclick="App.rlogin(\'' + x.nis + '\')">Reset login</button>' : '<span class="muted">—</span>'; }
-function rlogin(nis) { // reset login dari Pantau Ujian (+ tambah waktu bila sesi masih berlangsung)
-  var x = P.pd && P.pd.rows.filter(function (r) { return r.nis === nis; })[0]; if (!x) return; var ber = x.status === 'berlangsung';
-  dlg('Reset login siswa', '<p><b>' + esc(x.nama) + '</b> · NIS ' + esc(x.nis) + '</p><p class="muted">Perangkat yang sedang login akan dikeluarkan. Siswa dapat masuk kembali' + (ber ? ' dan <b>melanjutkan ujian yang sedang berlangsung</b> dengan jawaban yang sudah tersimpan.' : '.') + '</p>' +
-    (ber ? '<label class="field"><span>Tambah waktu pengerjaan (menit)</span><input id="rlt" type="number" min="0" max="120" value="0"><small class="muted">Waktu tetap berjalan menurut jam server. Isi hanya bila siswa kehilangan waktu karena gangguan jaringan. Sisa waktu menyesuaikan otomatis saat siswa membuka halaman ujian.</small></label>' : ''), 'Reset Login', function (close, btn) {
+function devText(p) { return p ? [p.os, p.br].filter(Boolean).join(' · ') + (p.w ? ' · ' + p.w + '×' + p.h : '') + (p.pwa ? ' · aplikasi' : '') : ''; }
+function hbText(s) { if (s == null) return '<span class="sm muted">belum ada sinyal</span>'; return s <= 90 ? '<span class="sm" style="color:var(--ok)">● terhubung</span>' : '<span class="sm" style="color:var(--bad)">○ tak ada sinyal ' + (s >= 120 ? Math.round(s / 60) + ' mnt' : s + ' dtk') + '</span>'; }
+function loginSel(x) {
+  if (x.login) return '<span class="badge b-info">Aktif</span><div class="sm muted">' + esc(devText(x.perangkat)) + '</div>' + (x.status === 'berlangsung' ? '<div>' + hbText(x.hb) + '</div>' : '') + '<button class="btn sm" style="margin-top:4px" onclick="App.rlogin(\'' + x.nis + '\')">Reset login ›</button>';
+  return x.status === 'berlangsung' ? '<span class="badge b-warn">Belum login ulang</span><br><button class="btn sm" style="margin-top:4px" onclick="App.rlogin(\'' + x.nis + '\')">Buka Reset Login ›</button>' : '<span class="muted">—</span>';
+}
+function rlogin(nis) { P.rq = nis; P.rf = 'semua'; P.rkel = ''; tab('reset'); } // reset dikelola di menu sendiri
+/* ---------- MENU RESET LOGIN ---------- */
+function rsStat(x) { var s = x.sesi[0]; return { aktif: x.login, ujian: x.sesi.length > 0, off: x.sesi.length > 0 && (!s || s.hb == null || s.hb > 90) }; }
+function tReset() {
+  pc('<h1>Reset Login</h1><div class="sk" style="margin-top:16px;min-height:200px"></div>'); P.rsel = {}; if (P.rq === undefined) P.rq = ''; P.rf = P.rf || 'semua'; P.rkel = P.rkel || ''; muatReset(true);
+  P.iv = setInterval(function () { if (P.tab !== 'reset') clearInterval(P.iv); else if (P.rauto !== false) muatReset(); }, 20000);
+}
+function muatReset(awal) {
+  Api.call('login.daftar').then(function (r) {
+    if (P.tab !== 'reset') return; if (!r.success) { pc('<h1>Reset Login</h1><p class="err">' + esc(r.message) + '</p>'); return; }
+    P.rd2 = r.data; P.rt2 = Date.now();
+    if (awal || !$('#rtb')) {
+      pc('<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:220px"><h1>Reset Login</h1><div class="muted sm">Kelola login siswa yang terlempar, berganti perangkat, atau terkunci</div></div><label class="sm" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rau" style="width:auto;min-height:0"' + (P.rauto !== false ? ' checked' : '') + '> Otomatis 20 dtk</label><button class="btn sm" onclick="App.rmuat()">Segarkan</button></div>' +
+        '<div id="rk" class="grid g4" style="margin-top:16px"></div><div class="note" style="margin-top:16px;display:flex;gap:10px;align-items:flex-start">' + ico('info') + '<div class="sm">Satu akun siswa hanya dapat login di satu perangkat. Bila siswa terlempar (jaringan putus, baterai habis, ganti perangkat), reset login di sini; siswa lalu login ulang dan memilih <b>Lanjutkan Ujian</b>. Waktu tetap berjalan menurut jam server; Anda dapat menambah waktu saat reset.</div></div>' +
+        '<div class="card" style="margin-top:16px"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div id="rch" style="display:flex;gap:8px;flex-wrap:wrap"></div><span style="flex:1"></span><select id="rkl" onchange="App.rsk(this.value)" style="max-width:180px"></select><input id="rq" placeholder="Cari nama / NIS..." value="' + esc(P.rq) + '" style="max-width:220px"></div><div id="rba" style="margin-top:10px"></div><div class="tw" id="rtb" style="margin-top:12px"></div></div>');
+      $('#rq').oninput = function () { P.rq = this.value; drawReset(); }; $('#rau').onchange = function () { P.rauto = this.checked; };
+    }
+    drawReset();
+  });
+}
+function drawReset() {
+  var d = P.rd2, q = (P.rq || '').toLowerCase(), f = P.rf, kl = P.rkel, c = { aktif: 0, ujian: 0, off: 0 };
+  d.rows.forEach(function (x) { var s = rsStat(x); if (s.aktif) c.aktif++; if (s.ujian) c.ujian++; if (s.off) c.off++; });
+  var L = d.rows.filter(function (x) { var s = rsStat(x); return (f === 'semua' || (f === 'aktif' ? s.aktif : f === 'ujian' ? s.ujian : s.off)) && (!kl || x.kelas === kl) && (!q || (x.nis + ' ' + x.nama).toLowerCase().indexOf(q) >= 0); });
+  P.rvis = L.filter(function (x) { return x.login; }).map(function (x) { return x.nis; });
+  var kp = function (t, v, s, col) { return '<div class="card stat" style="border-left:4px solid ' + col + '"><span class="xs muted">' + t + '</span><b>' + v + '</b><span class="sm muted">' + s + '</span></div>'; };
+  $('#rk').innerHTML = kp('Siswa', d.rows.length, 'terdaftar pada lingkup Anda', '#1E3A5F') + kp('Login aktif', c.aktif, 'sedang masuk di satu perangkat', '#3B82F6') + kp('Sedang ujian', c.ujian, 'sesi berlangsung', '#16A34A') + kp('Tak ada sinyal', c.off, 'sedang ujian tapi terputus', '#DC2626');
+  $('#rch').innerHTML = [['semua', 'Semua', d.rows.length], ['aktif', 'Login aktif', c.aktif], ['ujian', 'Sedang ujian', c.ujian], ['off', 'Tak ada sinyal', c.off]].map(function (t) { return '<button class="chip' + (f === t[0] ? ' on' : '') + '" onclick="App.rsf(\'' + t[0] + '\')">' + t[1] + ' (' + t[2] + ')</button>'; }).join('');
+  $('#rkl').innerHTML = '<option value="">Semua kelas</option>' + d.kelas.map(function (k) { return '<option' + (kl === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
+  var ns = Object.keys(P.rsel).length;
+  $('#rba').innerHTML = ns ? '<b>' + ns + ' dipilih</b> <button class="btn sm d" onclick="App.rsm()">Reset login terpilih</button> <button class="btn sm" onclick="App.rsc(\'\',false)">Batal pilih</button>' : '<span class="sm muted">Pilih beberapa siswa untuk reset sekaligus (tanpa tambah waktu).</span>';
+  var allSel = P.rvis.length && P.rvis.every(function (n) { return P.rsel[n]; });
+  $('#rtb').innerHTML = L.length ? '<table><thead><tr><th style="width:34px"><input type="checkbox" style="width:auto;min-height:0" onchange="App.rsca(this.checked)"' + (allSel ? ' checked' : '') + '></th><th>Siswa</th><th>Kelas</th><th>Login</th><th>Ujian berlangsung</th><th></th></tr></thead><tbody>' + L.map(function (x) {
+    var jam = x.sejak ? new Date(x.sejak).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) : '';
+    var lg = x.login ? '<span class="badge b-info">Aktif</span> <span class="sm muted">sejak ' + jam + '</span><div class="sm muted">' + esc(devText(x.perangkat)) + '</div>' : '<span class="muted">—</span>';
+    var uj = x.sesi.length ? x.sesi.map(function (s) { return '<div><b>' + esc(s.judul) + '</b> <span class="sm muted">· sisa ' + mmss(Math.max(0, s.sisa)) + (s.tambah ? ' (+' + s.tambah + ' mnt)' : '') + '</span><br>' + hbText(s.hb) + '</div>'; }).join('') : '<span class="muted">—</span>';
+    var ak = x.login ? '<button class="btn p sm" onclick="App.rs1(\'' + x.nis + '\')">Reset login</button>' : (x.sesi.length ? '<span class="badge b-warn">Belum login ulang</span>' : '<span class="muted">—</span>');
+    return '<tr><td><input type="checkbox" style="width:auto;min-height:0"' + (x.login ? ' onchange="App.rsc(\'' + x.nis + '\',this.checked)"' + (P.rsel[x.nis] ? ' checked' : '') : ' disabled') + '></td><td><div style="display:flex;gap:10px;align-items:center"><span class="me" style="padding:0;border:0;background:none"><i>' + esc(x.nama.charAt(0).toUpperCase()) + '</i></span><div><b>' + esc(x.nama) + '</b><br><span class="mono muted sm">' + esc(x.nis) + '</span></div></div></td><td>' + esc(x.kelas) + '</td><td>' + lg + '</td><td>' + uj + '</td><td class="right">' + ak + '</td></tr>';
+  }).join('') + '</tbody></table>' : '<p class="muted" style="padding:18px;text-align:center">Tidak ada siswa pada filter ini.</p>';
+}
+function resetSatu(nis) {
+  var x = P.rd2.rows.filter(function (r) { return r.nis === nis; })[0]; if (!x) return; var ber = x.sesi.length > 0;
+  dlg('Reset login siswa', '<p><b>' + esc(x.nama) + '</b> · NIS ' + esc(x.nis) + ' · ' + esc(x.kelas) + '</p><p class="muted">Perangkat yang sedang login akan dikeluarkan. Siswa dapat masuk kembali' + (ber ? ' dan <b>melanjutkan ujian yang sedang berlangsung</b> dengan jawaban yang sudah tersimpan.' : '.') + '</p>' +
+    (ber ? '<label class="field"><span>Tambah waktu pengerjaan (menit)</span><input id="rlt" type="number" min="0" max="120" value="0"><small class="muted">Waktu tetap berjalan menurut jam server. Isi hanya bila siswa kehilangan waktu karena gangguan. Sisa waktu menyesuaikan otomatis saat siswa membuka halaman ujian.</small></label>' : ''), 'Reset Login', function (close, btn) {
     var tb = ber ? Math.max(0, Math.min(120, Math.floor(Number($('#rlt').value) || 0))) : 0;
-    Api.call('ujian.resetlogin', { idUjian: P.cur, nis: nis, tambah: tb }).then(function (r) {
+    Api.call('login.reset', { nis: nis, tambah: tb, idUjian: ber ? x.sesi[0].idUjian : '' }).then(function (r) {
       if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; }
-      close(); toast(r.data.kedaluwarsa ? 'Login direset, tetapi waktu siswa sudah habis sehingga tidak bisa ditambah.' : 'Login direset' + (r.data.tambah ? ' · waktu +' + r.data.tambah + ' menit' : ''), r.data.kedaluwarsa ? 'warn' : ''); muatPantau(true);
+      close(); toast(r.data.kedaluwarsa ? 'Login direset, tetapi waktu siswa sudah habis sehingga tidak bisa ditambah.' : 'Login direset' + (r.data.tambah ? ' · waktu +' + r.data.tambah + ' menit' : ''), r.data.kedaluwarsa ? 'warn' : ''); P.rsel = {}; muatReset();
+    });
+  });
+}
+function resetMassal() {
+  var ids = Object.keys(P.rsel); if (!ids.length) return;
+  dlg('Reset login ' + ids.length + ' siswa?', '<p class="muted">Perangkat yang sedang login pada siswa terpilih akan dikeluarkan dan mereka dapat masuk kembali. Tambah waktu tidak diterapkan pada reset massal; gunakan reset satuan bila perlu menambah waktu.</p>', 'Reset ' + ids.length + ' Login', function (close, btn) {
+    Api.call('login.resetmassal', { nis: ids }).then(function (r) {
+      if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; }
+      close(); toast(r.data.direset + ' login direset' + (r.data.dilewati ? ', ' + r.data.dilewati + ' dilewati' : ''), r.data.dilewati ? 'warn' : ''); P.rsel = {}; muatReset();
     });
   });
 }
@@ -662,7 +811,7 @@ function drawSiswa() {
     '<select id="sk" style="max-width:180px"><option value="">Semua kelas</option>' + Object.keys(kl).sort().map(function (x) { return '<option' + (k === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></div>' +
     '<p class="muted sm">Password tersimpan sebagai hash sehingga <b>tidak dapat dilihat</b>. Admin dapat menetapkan password baru secara manual (atau acak) lewat tombol Password.</p>' +
     '<div class="tw"><table><thead><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Status</th><th>Login</th><th></th></tr></thead><tbody>' +
-    L.slice(0, 200).map(function (s) { return '<tr><td class="mono">' + esc(s.nis) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.kelas) + '</td><td><span class="badge ' + (s.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(s.status) + '</span></td><td>' + (s.login ? '<span class="badge b-info">Aktif</span> <button class="btn sm" onclick="App.srl(\'' + esc(s.nis) + '\')">Reset</button>' : '<span class="muted">—</span>') + '</td><td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.pwSiswa(\'' + esc(s.nis) + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button></td></tr>'; }).join('') +
+    L.slice(0, 200).map(function (s) { return '<tr><td class="mono">' + esc(s.nis) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.kelas) + '</td><td><span class="badge ' + (s.status === 'aktif' ? 'b-ok' : 'b-mut') + '">' + esc(s.status) + '</span></td><td>' + (s.login ? '<span class="badge b-info">Aktif</span>' : '<span class="muted">—</span>') + '</td><td class="right" style="white-space:nowrap"><button class="btn sm" onclick="App.sForm(\'' + esc(s.nis) + '\')">Edit</button> <button class="btn sm" onclick="App.pwSiswa(\'' + esc(s.nis) + '\')">Password</button> <button class="btn sm" style="color:var(--bad)" onclick="App.sHapus(\'' + esc(s.nis) + '\')">Hapus</button></td></tr>'; }).join('') +
     '</tbody></table></div>' + (L.length > 200 ? '<p class="muted sm">Menampilkan 200 dari ' + L.length + ' — gunakan pencarian.</p>' : L.length ? '' : '<p class="muted">Tidak ada siswa.</p>');
   $('#sq').oninput = function () { P.sq = this.value; var p = this.selectionStart; drawSiswa(); var e = $('#sq'); e.focus(); e.setSelectionRange(p, p); };
   $('#sk').onchange = function () { P.sk = this.value; drawSiswa(); };
@@ -712,12 +861,6 @@ function sForm(nis) {
       else m.remove();
     });
   };
-}
-function siswaResetLogin(nis) {
-  var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
-  dlg('Reset login siswa?', '<p><b>' + esc(s.nama) + '</b> · NIS ' + esc(s.nis) + ' · ' + esc(s.kelas) + '</p><p class="muted">Perangkat yang sedang login dikeluarkan dan siswa dapat masuk kembali, termasuk melanjutkan ujian yang masih berlangsung.</p>', 'Reset Login', function (close, btn) {
-    Api.call('siswa.resetlogin', { nis: nis }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Login siswa direset'); listSiswa(); });
-  });
 }
 function sHapus(nis) {
   var s = P.sw.filter(function (x) { return x.nis === nis; })[0]; if (!s) return;
@@ -806,6 +949,9 @@ function guruHapus(id) {
     Api.call('guru.hapus', { id: id }).then(function (r) { if (!r.success) { btn.disabled = false; toast(r.message, 'error'); return; } close(); toast('Guru dihapus'); muatGuru(); });
   }, true);
 }
+var JL = { pindah_tab: 'Pindah tab/aplikasi', keluar_fullscreen: 'Keluar layar penuh', jendela_diubah: 'Jendela/fokus berubah (layar terbagi)', cetak: 'Cetak', salin_tempel: 'Salin/tempel diblokir', tangkap_layar: 'Tombol tangkap layar' };
+function jl(j) { return JL[j] || j; }
+function jlc(j) { return j === 'pindah_tab' || j === 'jendela_diubah' ? 'b-warn' : j === 'keluar_fullscreen' || j === 'cetak' ? 'b-info' : 'b-mut'; }
 function histSvg(h) {
   var mx = Math.max.apply(null, h.concat([1])), lab = ['< 60', '60–69', '70–79', '80–89', '90–100'], col = ['#EF4444', '#F59E0B', '#EAB308', '#3B82F6', '#16A34A'];
   return '<svg viewBox="0 0 400 200" style="width:100%;height:auto" role="img" aria-label="Distribusi nilai">' + h.map(function (v, i) {
@@ -956,14 +1102,14 @@ function drawLap() {
           '<td>' + (Object.keys(a.dist).sort().map(function (l) { return '<span class="badge ' + (l === a.kunci ? 'b-ok' : 'b-mut') + '" style="margin:1px">' + l + ' · ' + a.dist[l] + '</span>'; }).join(' ') || '<span class="muted">—</span>') + '</td></tr>';
       }).join('') + '</tbody></table>' : '<p class="muted">Belum ada soal.</p>') + '</div></div>';
   } else {
-    var gs = {}; d.log.forEach(function (l) { var g = gs[l.nis] = gs[l.nis] || { nama: l.nama, nis: l.nis, tab: 0, fs: 0, last: 0 }; if (l.jenis === 'keluar_fullscreen') g.fs++; else g.tab++; g.last = Math.max(g.last, l.waktu); });
+    var gs = {}; d.log.forEach(function (l) { var g = gs[l.nis] = gs[l.nis] || { nama: l.nama, nis: l.nis, tab: 0, fs: 0, lain: 0, last: 0 }; if (l.jenis === 'keluar_fullscreen') g.fs++; else if (l.jenis === 'pindah_tab') g.tab++; else g.lain++; g.last = Math.max(g.last, l.waktu); });
     var GL = Object.keys(gs).map(function (k) { return gs[k]; }).sort(function (a, b) { return (b.tab + b.fs) - (a.tab + a.fs); });
-    P.lcsv = [['Waktu', 'NIS', 'Nama', 'Jenis']].concat(d.log.slice().sort(function (a, b) { return b.waktu - a.waktu; }).map(function (l) { return [fmt(l.waktu), l.nis, l.nama, l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab']; }));
-    body = '<div class="grid g2" style="margin-top:16px"><div class="card"><h3>Ringkasan per siswa</h3><div class="tw">' + (GL.length ? '<table><thead><tr><th>Siswa</th><th>Pindah tab</th><th>Keluar layar penuh</th><th>Total</th></tr></thead><tbody>' + GL.map(function (g) {
-        var t = g.tab + g.fs; return '<tr><td><b>' + esc(g.nama) + '</b><br><span class="mono muted sm">' + esc(g.nis) + '</span></td><td>' + g.tab + '</td><td>' + g.fs + '</td><td><span class="badge ' + (t >= 3 ? 'b-bad' : 'b-warn') + '">' + t + '</span></td></tr>';
+    P.lcsv = [['Waktu', 'NIS', 'Nama', 'Jenis']].concat(d.log.slice().sort(function (a, b) { return b.waktu - a.waktu; }).map(function (l) { return [fmt(l.waktu), l.nis, l.nama, jl(l.jenis)]; }));
+    body = '<div class="grid g2" style="margin-top:16px"><div class="card"><h3>Ringkasan per siswa</h3><div class="tw">' + (GL.length ? '<table><thead><tr><th>Siswa</th><th>Pindah tab</th><th>Keluar layar penuh</th><th>Lainnya</th><th>Total</th></tr></thead><tbody>' + GL.map(function (g) {
+        var t = g.tab + g.fs + g.lain; return '<tr><td><b>' + esc(g.nama) + '</b><br><span class="mono muted sm">' + esc(g.nis) + '</span></td><td>' + g.tab + '</td><td>' + g.fs + '</td><td>' + g.lain + '</td><td><span class="badge ' + (t >= 3 ? 'b-bad' : 'b-warn') + '">' + t + '</span></td></tr>';
       }).join('') + '</tbody></table>' : '<p class="muted">Tidak ada pelanggaran tercatat.</p>') + '</div></div>' +
       '<div class="card"><h3>Rincian kejadian</h3><div class="tw" style="max-height:420px;overflow:auto">' + (d.log.length ? '<table><thead><tr><th>Waktu</th><th>Siswa</th><th>Jenis</th></tr></thead><tbody>' + d.log.slice().sort(function (a, b) { return b.waktu - a.waktu; }).map(function (l) {
-        return '<tr><td class="sm">' + fmt(l.waktu) + '</td><td>' + esc(l.nama) + '</td><td><span class="badge ' + (l.jenis === 'keluar_fullscreen' ? 'b-info' : 'b-warn') + '">' + (l.jenis === 'keluar_fullscreen' ? 'Keluar layar penuh' : 'Pindah tab') + '</span></td></tr>';
+        return '<tr><td class="sm">' + fmt(l.waktu) + '</td><td>' + esc(l.nama) + '</td><td><span class="badge ' + jlc(l.jenis) + '">' + (jl(l.jenis)) + '</span></td></tr>';
       }).join('') + '</tbody></table>' : '<p class="muted">Tidak ada kejadian.</p>') + '</div></div></div>';
   }
   $('#lp').innerHTML = '<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div style="flex:1;min-width:200px"><b>' + esc(d.judul) + '</b><div class="sm muted">Kelas ' + esc(d.kelas) + ' · ' + d.jumlah + ' soal · ' + d.durasi + ' menit</div></div><button class="btn" onclick="App.unduhLap()">⬇ Unduh CSV (Excel)</button><button class="btn p" onclick="App.cetakLap()">🖨 Cetak Laporan</button></div><div style="margin-top:12px">' + KP + '</div><div class="tabs" style="margin-bottom:0">' + tabs + '</div>' + body;
@@ -996,7 +1142,9 @@ window.App = {
   sdel: function (id) { var s = P.bs.all.filter(function (x) { return x.id === id; })[0]; if (s) soalHapus([id], '<b>' + esc(s.mapel) + '</b> — ' + esc(s.t.slice(0, 90))); },
   bdelSel: function () { var ids = Object.keys(P.bs.sel); if (ids.length) soalHapus(ids, '<b>' + ids.length + ' soal terpilih</b>'); },
   bcsv: function () { unduh('bank-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci']].concat(P.bs.all.map(function (s) { return [s.mapel, s.t, s.o.A, s.o.B, s.o.C, s.o.D, s.o.E, s.kunci]; }))); },
-  kartu: kartu, srl: siswaResetLogin, rlogin: rlogin, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
+  kartu: kartu, rlogin: rlogin, rs1: resetSatu, rsm: resetMassal, rmuat: function () { muatReset(); }, rsf: function (k) { P.rf = k; drawReset(); }, rsk: function (v) { P.rkel = v; drawReset(); },
+  rsc: function (nis, on) { if (!nis) P.rsel = {}; else if (on) P.rsel[nis] = 1; else delete P.rsel[nis]; drawReset(); }, rsca: function (on) { P.rvis.forEach(function (n) { if (on) P.rsel[n] = 1; else delete P.rsel[n]; }); drawReset(); },
+  uji: { infoPerangkat: infoPerangkat, wmUrl: wmUrl, denyut: function () { denyut(); } }, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
   pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
   salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
   unduhPantau: function () { var d = P.pd; if (!d) return; unduh('pantau-' + d.judul.replace(/\W+/g, '-') + '.csv', [['NIS', 'Nama', 'Kelas', 'Status', 'Terjawab', 'Pindah tab', 'Nilai']].concat(d.rows.map(function (x) { return [x.nis, x.nama, x.kelas, x.status, x.jawab + '/' + d.jumlah, x.pelanggaran, x.nilai == null ? '' : x.nilai]; }))); },

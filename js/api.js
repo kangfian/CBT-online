@@ -11,6 +11,9 @@
   };
   var Api = {
     siap: SIAP,
+    beacon: function (action, data) { // pengiriman andal saat halaman masuk latar belakang (hasil tidak dibaca)
+      try { if (!SIAP || typeof navigator === 'undefined' || !navigator.sendBeacon) return false; return navigator.sendBeacon(URL_, new Blob([JSON.stringify({ action: action, token: Sesi.ambil().token || '', data: data || {} })], { type: 'text/plain;charset=UTF-8' })); } catch (e) { return false; }
+    },
     call: function (action, data) {
       if (!SIAP) return Promise.resolve({ success: false, message: 'Konfigurasi belum lengkap: isi GAS_URL di js/config.js.' });
       return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
