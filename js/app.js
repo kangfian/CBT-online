@@ -4,7 +4,7 @@
 var CFG = window.APP_CONFIG || {}, app = document.querySelector('#app');
 var S = { me: null, ujian: [], skew: 0, filter: 'semua', q: '', cur: null };
 var X = null; // state ujian yang sedang berjalan
-var VER = 'v3.1', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
+var VER = 'v3.2', MODE = window.APP_MODE === 'staf' ? 'staf' : 'siswa', V = { n: 0, j: 'pindah_tab' };
 var P = { tab: 'dash', soal: null, sel: {}, data: [] };
 var XLS = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -306,6 +306,7 @@ function tick() {
   if (sisa <= 0) { e.textContent = '00:00'; kumpul(true); return; }
   var kb = $('#kb'); if (kb && X.ks > 0 && kb.disabled) { var s2 = kbBuka() - now(); if (s2 <= 0) drawQ(); else kb.textContent = '🔒 Kumpulkan (dibuka ' + mmss(s2) + ')'; }
   e.textContent = mmss(sisa); e.className = 'timer' + (sisa < 120000 ? ' bad' : sisa < 600000 ? ' warn' : '');
+  try { if (document.body && document.body.className === 'xroom shield' && !document.hidden && adaFokus()) shield(false); } catch (x) {}
   ++X.n; if (X.n % 15 === 0) flush(); if (X.n % 45 === 5) denyut();
 }
 var HITUNG = { pindah_tab: 1, keluar_fullscreen: 1, jendela_diubah: 1, cetak: 1 };
@@ -350,8 +351,15 @@ function onResize() { // layar terbagi / jendela melayang / PiP: ukuran viewport
     if (w < X.w0 * 0.85 || h < X.h0 * 0.7) catat('jendela_diubah'); else { X.w0 = Math.max(X.w0, w); X.h0 = Math.max(X.h0, h); }
   }, 700);
 }
-function onBlur() { shield(true); clearTimeout(X && X.bt); if (X) X.bt = setTimeout(function () { if (X && X.aktif && !document.hidden && !(document.hasFocus && document.hasFocus())) catat('jendela_diubah'); }, 2500); }
-function onFocus() { if (X) clearTimeout(X.bt); shield(false); }
+function bukanWindow(e) { return !!(e && e.target && e.target !== window && e.target !== document); } // blur/focus dari tombol/elemen (mis. saat soal dirender ulang) bukan hilangnya fokus jendela
+function adaFokus() { return !(document.hasFocus && !document.hasFocus()); }
+function onBlur(e) {
+  if (bukanWindow(e) || !X || !X.aktif) return;
+  if (!adaFokus()) shield(true); // perisai hanya bila jendela benar-benar kehilangan fokus
+  clearTimeout(X.bt); X.bt = setTimeout(function () { if (!X || !X.aktif) return; if (!document.hidden && !adaFokus()) catat('jendela_diubah'); else if (adaFokus()) shield(false); }, 2500);
+}
+function onFocus(e) { if (bukanWindow(e) || !X) return; clearTimeout(X.bt); shield(false); }
+function limpiPerisai() { if (!document.hidden) shield(false); } // ketukan/klik pengguna berarti halaman aktif: perisai tidak boleh menghalangi
 function onKey(e) {
   var k = (e.key || '').toLowerCase(), c = e.ctrlKey || e.metaKey;
   if (c && k.length === 1 && 'cvxpsuafg'.indexOf(k) >= 0) { e.preventDefault(); if (k === 'p') catat('cetak'); else if ('cvx'.indexOf(k) >= 0) catat('salin_tempel'); return; }
@@ -360,16 +368,17 @@ function onKey(e) {
 }
 function amanPasang() { // pengamanan berlapis di HP & laptop selama ujian
   var W = window, D = document, L = [];
-  var add = function (t, ty, fn) { if (t && t.addEventListener) { t.addEventListener(ty, fn, true); L.push([t, ty, fn]); } };
+  var add = function (t, ty, fn, cap) { cap = cap === undefined ? true : cap; if (t && t.addEventListener) { t.addEventListener(ty, fn, cap); L.push([t, ty, fn, cap]); } };
   var cegah = function (e) { if (e && e.preventDefault) e.preventDefault(); }, log = function (e) { cegah(e); catat('salin_tempel'); };
   ['copy', 'cut', 'paste', 'contextmenu'].forEach(function (t) { add(D, t, log); }); ['dragstart', 'selectstart'].forEach(function (t) { add(D, t, cegah); });
   add(D, 'keydown', onKey); add(W, 'pagehide', function () { catat('pindah_tab'); }); add(W, 'beforeprint', function () { catat('cetak'); });
-  if (CFG.DETEKSI_FOKUS !== false) { add(W, 'blur', onBlur); add(W, 'focus', onFocus); }
+  if (CFG.DETEKSI_FOKUS !== false) { add(W, 'blur', onBlur, false); add(W, 'focus', onFocus, false); }
+  ['pointerdown', 'touchstart', 'click'].forEach(function (t) { add(D, t, limpiPerisai); });
   if (CFG.DETEKSI_UKURAN !== false) add(W, 'resize', onResize);
   X.ev = L; ukuranDasar(); shield(false); wmPasang(); wlMinta();
 }
 function amanLepas() {
-  if (!X) return; (X.ev || []).forEach(function (e) { try { e[0].removeEventListener(e[1], e[2], true); } catch (x) {} }); X.ev = [];
+  if (!X) return; (X.ev || []).forEach(function (e) { try { e[0].removeEventListener(e[1], e[2], e[3] === undefined ? true : e[3]); } catch (x) {} }); X.ev = [];
   clearTimeout(X.bt); clearTimeout(X.rt); try { document.body.className = ''; } catch (x) {} var w = $('#wm'); if (w) w.remove(); try { if (X.wl && X.wl.release) X.wl.release(); } catch (x) {}
 }
 function onVis() { if (!X || !X.aktif) return; if (document.hidden) { shield(true); catat('pindah_tab'); } else { shield(false); pelAntrian(); wlMinta(); } }
@@ -1144,7 +1153,7 @@ window.App = {
   bcsv: function () { unduh('bank-soal.csv', [['Mapel', 'Pertanyaan', 'A', 'B', 'C', 'D', 'E', 'Kunci']].concat(P.bs.all.map(function (s) { return [s.mapel, s.t, s.o.A, s.o.B, s.o.C, s.o.D, s.o.E, s.kunci]; }))); },
   kartu: kartu, rlogin: rlogin, rs1: resetSatu, rsm: resetMassal, rmuat: function () { muatReset(); }, rsf: function (k) { P.rf = k; drawReset(); }, rsk: function (v) { P.rkel = v; drawReset(); },
   rsc: function (nis, on) { if (!nis) P.rsel = {}; else if (on) P.rsel[nis] = 1; else delete P.rsel[nis]; drawReset(); }, rsca: function (on) { P.rvis.forEach(function (n) { if (on) P.rsel[n] = 1; else delete P.rsel[n]; }); drawReset(); },
-  uji: { infoPerangkat: infoPerangkat, wmUrl: wmUrl, denyut: function () { denyut(); } }, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
+  uji: { infoPerangkat: infoPerangkat, wmUrl: wmUrl, denyut: function () { denyut(); }, tick: function () { tick(); } }, pwSiswa: pwSiswa, sForm: sForm, sHapus: sHapus, hapusUjian: hapusUjian,
   pf: function (k) { P.pf = k; if (P.pd) drawPantau(); },
   salinToken: function () { if (P.pd && navigator.clipboard) navigator.clipboard.writeText(P.pd.token).then(function () { toast('Token disalin'); }); },
   unduhPantau: function () { var d = P.pd; if (!d) return; unduh('pantau-' + d.judul.replace(/\W+/g, '-') + '.csv', [['NIS', 'Nama', 'Kelas', 'Status', 'Terjawab', 'Pindah tab', 'Nilai']].concat(d.rows.map(function (x) { return [x.nis, x.nama, x.kelas, x.status, x.jawab + '/' + d.jumlah, x.pelanggaran, x.nilai == null ? '' : x.nilai]; }))); },
